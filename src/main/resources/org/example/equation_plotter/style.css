@@ -1,0 +1,66 @@
+.left-panel {
+    -fx-background-color: #2b2b2b;
+    -fx-border-color: #890000;
+    -fx-border-width: 0 1 0 0;
+}
+
+.add-button {
+    -fx-cursor: hand;
+}
+
+.equation-list {
+    -fx-padding: 10;
+}
+
+
+.neon-button {
+    -fx-background-color: transparent;
+    -fx-border-color: #00FFFF;
+    -fx-border-width: 2px;
+    -fx-border-radius: 5px;
+    -fx-cursor: hand;
+}
+
+.neon-button:hover {
+    -fx-background-color: rgba(0, 255, 255, 0.1);
+    -fx-effect: dropshadow(three-pass-box, #00FFFF, 10, 0, 0, 0);
+}
+
+
+.neon-button:pressed {
+    -fx-background-color: #00FFFF;
+    -fx-text-fill: black;
+}
+
+
+.glass-input {
+
+    -fx-background-color: rgba(20, 20, 30, 0.6);
+    -fx-background-radius: 20;
+
+    -fx-border-color: rgba(0, 255, 255, 0.3);
+    -fx-border-radius: 20;
+    -fx-border-width: 1px;
+
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: derive(grey, -30%);
+    -fx-font-family: "Consolas", "Monospaced", sans-serif;
+    -fx-font-size: 14px;
+    -fx-padding: 8 15 8 15;
+}
+
+.glass-input:focused {
+    -fx-border-color: #00FFFF;
+    -fx-background-color: rgba(0, 0, 0, 0.8);
+    -fx-effect: dropshadow(three-pass-box, rgba(0, 255, 255, 0.6), 15, 0, 0, 0);
+}
+
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-padding: 5 10 5 10;
+}
+
+.icon-button:hover {
+    -fx-effect: dropshadow(three-pass-box, rgba(255, 50, 50, 0.8), 10, 0, 0, 0);
+}
