@@ -46,6 +46,12 @@ public class EquatorController {
         equationInput.setPromptText("y=f(x)");
         equationInput.getStyleClass().add("glass-input");
 
+        equationInput.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (graphPlotter != null) {
+                graphPlotter.plotEquation(newValue);
+            }
+        });
+
         Button btn_rmv = new Button();
         btn_rmv.getStyleClass().add("icon-button");
         FontIcon btn_rmv_icon = new FontIcon("fas-times");

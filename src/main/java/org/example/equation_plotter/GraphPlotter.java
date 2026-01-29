@@ -15,7 +15,8 @@ public class GraphPlotter extends Canvas {
     private double prevMouseX;
     private double prevMouseY;
     //equation
-    private String currentEquation = "";
+    private String[] currentEquation = new String[50];
+    private int eqCount = 0;
 
     //handles mouse functionalities in graph
     public GraphPlotter(double width, double height) {
@@ -73,7 +74,7 @@ public class GraphPlotter extends Canvas {
         gc.fillRect(0, 0, w, h);
 
         drawGrid(gc, w, h);
-        if (!currentEquation.isEmpty()) {
+        if (eqCount > 0 && currentEquation[0] != null) {
             drawFunction(gc, w, h);
         }
     }
@@ -113,13 +114,49 @@ public class GraphPlotter extends Canvas {
     }
 
     private void drawFunction(GraphicsContext gc, double w, double h) {
+        for (String equation : currentEquation) {
+            if (equation == null || equation.trim().isEmpty()) continue;
+            EquationParser parser = new EquationParser(equation);
 
+            gc.beginPath();
+            gc.setStroke(Color.CYAN);
+            gc.setLineWidth(2);
+
+            boolean firstPoint = true;
+
+            // Iterate over pixel X coordinates
+            for (double pixelX = 0; pixelX < w; pixelX++) {
+                // Screen X -> Math X
+                double logicX = graphCenterX + (pixelX - w / 2.0) / scale;
+
+                // Calculate Math Y
+                double logicY = parser.evaluate(logicX);
+
+                // Check for valid result (handle division by zero, etc.)
+                if (Double.isNaN(logicY) || Double.isInfinite(logicY)) {
+                    firstPoint = true;
+                    continue;
+                }
+
+                // Math Y -> Screen Y
+                double pixelY = h / 2.0 - (logicY - graphCenterY) * scale;
+
+                // Draw
+                if (firstPoint) {
+                    gc.moveTo(pixelX, pixelY);
+                    firstPoint = false;
+                } else {
+                    gc.lineTo(pixelX, pixelY);
+                }
+            }
+            gc.stroke();
+        }
     }
 
     //set equation
     public void plotEquation(String equationIn) {
         if (equationIn == null) return;
-        this.currentEquation = equationIn;
+        this.currentEquation[eqCount++] = equationIn;
         draw();
     }
 

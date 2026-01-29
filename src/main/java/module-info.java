@@ -8,6 +8,8 @@ module org.example.equation_plotter {
     requires org.kordamp.ikonli.javafx;
     requires eu.hansolo.tilesfx;
     requires org.kordamp.ikonli.fontawesome5;
+    requires java.desktop;
+    requires MathParser.org.mXparser;
 
     opens org.example.equation_plotter to javafx.fxml;
     exports org.example.equation_plotter;
