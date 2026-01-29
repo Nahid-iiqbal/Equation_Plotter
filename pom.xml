@@ -84,6 +84,11 @@
             <artifactId>ikonli-fontawesome5-pack</artifactId>
             <version>12.3.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.mariuszgromada.math</groupId>
+            <artifactId>MathParser.org-mXparser</artifactId>
+            <version>6.1.0</version>
+        </dependency>
     </dependencies>
 
     <build>

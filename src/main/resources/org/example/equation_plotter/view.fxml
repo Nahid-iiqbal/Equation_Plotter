@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
+<?import javafx.geometry.*?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
 <?import java.lang.String?>
 <?import java.net.URL?>
 <AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="656.0"
@@ -34,12 +35,34 @@
         <BorderPane layoutY="21.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0"
                     AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="21.0">
             <left>
-                <BorderPane prefHeight="200.0" prefWidth="200.0" styleClass="left-panel" BorderPane.alignment="CENTER">
+                <BorderPane prefHeight="635.0" prefWidth="226.0" styleClass="left-panel" BorderPane.alignment="CENTER">
+
+                    <top>
+                        <javafx.scene.control.Label text="EQUATIONS" textFill="#888888"
+                                                    BorderPane.alignment="CENTER_LEFT">
+                            <padding>
+                                <Insets bottom="10.0" left="5.0"/>
+                            </padding>
+                            <font>
+                                <javafx.scene.text.Font name="System Bold" size="12.0"/>
+                            </font>
+                        </javafx.scene.control.Label>
+                    </top>
+
+                    <center>
+                        <VBox fx:id="equation_container" spacing="10.0" styleClass="equation-list"
+                              BorderPane.alignment="CENTER">
+                            <padding>
+                                <Insets top="5.0" right="5.0" bottom="5.0" left="5.0"/>
+                            </padding>
+                        </VBox>
+                    </center>
+
                     <bottom>
-                        <Button mnemonicParsing="false" onAction="#btnAddPressed" text="Add Equation"
-                                textAlignment="CENTER" BorderPane.alignment="CENTER">
+                        <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#btnAddPressed"
+                                text="Add Equation" BorderPane.alignment="CENTER">
                             <BorderPane.margin>
-                                <Insets bottom="10.0"/>
+                                <Insets top="10.0"/>
                             </BorderPane.margin>
                             <styleClass>
                                 <String fx:value="add-button"/>
@@ -47,14 +70,11 @@
                             </styleClass>
                         </Button>
                     </bottom>
-                    <center>
-                        <VBox fx:id="equation_container" prefHeight="594.0" prefWidth="242.0" styleClass="equation-list"
-                              BorderPane.alignment="CENTER"/>
-                    </center>
+
                 </BorderPane>
             </left>
             <center>
-                <AnchorPane prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+                <AnchorPane fx:id="graph_container" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
                     <children>
                         <Button fx:id="btn_home" layoutX="638.0" layoutY="14.0" minHeight="30.0" minWidth="30.0"
                                 mnemonicParsing="false" onAction="#btnHomePressed" styleClass="neon-button"

@@ -6,6 +6,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -15,8 +16,11 @@ public class EquatorController {
     @FXML
     private VBox equation_container;
     @FXML
+    private AnchorPane graph_container;
+    @FXML
     private Button btn_home, btn_zoom_in, btn_zoom_out;
 
+    private GraphPlotter graphPlotter;
 
     @FXML
     public void initialize() {
@@ -24,6 +28,12 @@ public class EquatorController {
         setBtn_home();
         setBtn_zoom_in();
         setBtn_zoom_out();
+
+        graphPlotter = new GraphPlotter(graph_container.getPrefWidth(), graph_container.getPrefHeight());
+        graphPlotter.widthProperty().bind(graph_container.widthProperty());
+        graphPlotter.heightProperty().bind(graph_container.heightProperty());
+
+        graph_container.getChildren().addFirst(graphPlotter);
     }
 
     @FXML
@@ -77,16 +87,16 @@ public class EquatorController {
 
     @FXML
     void btnHomePressed(ActionEvent event) {
-
+        graphPlotter.reset();
     }
 
     @FXML
     void zoomInPressed(ActionEvent event) {
-
+        graphPlotter.zoomIn();
     }
 
     @FXML
     void zoomOutPressed(ActionEvent event) {
-
+        graphPlotter.zoomOut();
     }
 }
