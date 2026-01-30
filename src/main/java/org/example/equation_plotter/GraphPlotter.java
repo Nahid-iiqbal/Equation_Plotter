@@ -52,6 +52,12 @@ public class GraphPlotter extends Canvas {
 
         //mouse wheel
         setOnScroll(e -> {
+            double mouseX = e.getX();
+            double mouseY = e.getY();
+            double prevScale = scale;
+            double graphX = graphCenterX + (mouseX - getWidth()/2)/prevScale;
+            double graphY = graphCenterY + (getHeight()/2 - mouseY)/prevScale;   // corresponding point (x,y) of the graph
+
             double zoom = 1.1;
             if (e.getDeltaY() < 0) {
                 scale /= zoom;
@@ -59,6 +65,10 @@ public class GraphPlotter extends Canvas {
             if (e.getDeltaY() > 0) {
                 scale *= zoom;
             }
+
+            graphCenterX = graphX - (mouseX - getWidth() / 2) / scale;
+            graphCenterY = graphY - (getHeight() / 2 - mouseY) / scale;
+
             draw();
         });
 
