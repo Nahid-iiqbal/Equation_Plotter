@@ -37,9 +37,9 @@ public class GraphPlotter extends Canvas {
         //mouse dragged
         setOnMouseDragged(e -> {
             if (e.getButton() == MouseButton.PRIMARY) {
-                double dx = e.getX() - prevMouseX;
-                double dy = e.getY() - prevMouseY;
-                graphCenterX += dx;
+                double dx = (e.getX() - prevMouseX)/scale;
+                double dy = (e.getY() - prevMouseY)/scale;
+                graphCenterX -= dx;
                 graphCenterY += dy;
                 prevMouseX = e.getX();
                 prevMouseY = e.getY();

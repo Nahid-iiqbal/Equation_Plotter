@@ -20,7 +20,7 @@ public class Equator extends Application {
         Scene scene = new Scene(fxmlLoader.load());
         stage.setTitle("Equator");
         stage.setScene(scene);
-        stage.setMaximized(true);
+        stage.setMaximized(false);
         stage.show();
     }
 
