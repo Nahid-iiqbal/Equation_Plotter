@@ -1,5 +1,6 @@
 package org.example.equation_plotter;
 
+import javafx.animation.PauseTransition;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
@@ -10,6 +11,7 @@ import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.util.Duration;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 public class EquatorController {
@@ -48,11 +50,14 @@ public class EquatorController {
         equationInput.setPromptText("y=f(x)");
         equationInput.getStyleClass().add("glass-input");
 
+        PauseTransition pause = new PauseTransition(Duration.millis(120));
         equationInput.textProperty().addListener((observable, oldValue, newValue) -> {
 
-            if (graphPlotter != null) {
-                graphPlotter.addEquationToHashmap(id, newValue);
-            }
+            pause.setOnFinished(e -> graphPlotter.addEquationToHashmap(id, newValue));
+            pause.playFromStart();
+//            if (graphPlotter != null) {
+//                graphPlotter.addEquationToHashmap(id, newValue);
+//            }
         });
 
         Button btn_rmv = new Button();

@@ -8,6 +8,12 @@ import javafx.scene.paint.Color;
 import java.util.HashMap;
 import java.util.Map;
 
+// New class for storing equation data and parser
+class EquationData {
+    String raw;
+    EquationParser parser;
+}
+
 public class GraphPlotter extends Canvas {
 
     //graph center
@@ -20,7 +26,7 @@ public class GraphPlotter extends Canvas {
     //equation
 
     // Used hashmap<id, eq> for storing equations instead of array.
-    private Map<String, String> currentEquations = new HashMap<>();
+    private Map<String, EquationData> currentEquations = new HashMap<>();
     // private String[] currentEquations = new String[50];
     private int eqCount = 0;
 
@@ -85,7 +91,12 @@ public class GraphPlotter extends Canvas {
 
     }
 
+    // Avoid redraw storms.
+    private boolean isDrawing = false;
+
     public void draw() {
+        if (isDrawing) return;
+
         // Draws the graph (Axis lines, gridboxes)
         GraphicsContext gc = getGraphicsContext2D();
         double w = getWidth();
@@ -101,6 +112,7 @@ public class GraphPlotter extends Canvas {
 //            drawFunction(gc, w, h);
 //        }
         drawFunction(gc, w, h);
+        isDrawing = false;
     }
 
     private void drawGrid(GraphicsContext gc, double w, double h) {
@@ -138,9 +150,9 @@ public class GraphPlotter extends Canvas {
     }
 
     private void drawFunction(GraphicsContext gc, double w, double h) {
-        for (String equation : currentEquations.values()) {
-            if (equation == null || equation.trim().isEmpty()) continue;
-            EquationParser parser = new EquationParser(equation);
+        for (EquationData equation : currentEquations.values()) {
+            if (equation == null || equation.raw.trim().isEmpty()) continue;
+            EquationParser parser = equation.parser;
 
             gc.beginPath();
             gc.setStroke(Color.CYAN);
@@ -149,7 +161,8 @@ public class GraphPlotter extends Canvas {
             boolean firstPoint = true;
 
             // Iterate over pixel X coordinates
-            for (double pixelX = 0; pixelX < w; pixelX++) {
+            double step = Math.max(1,scale/50);  // slight optimization
+            for (double pixelX = 0; pixelX < w; pixelX+=step) {
                 // Screen X -> Graph X
                 double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
 
@@ -187,7 +200,12 @@ public class GraphPlotter extends Canvas {
     // plotEquation is "addEquationToHashmap" now :)
     public void addEquationToHashmap(String id, String equation){
         if (equation == null) return;
-        currentEquations.put(id, equation);
+
+        EquationData data = new EquationData();
+        data.raw = equation;
+        data.parser = new EquationParser(equation);  // equation is parsed here
+
+        currentEquations.put(id, data);
         draw();
     }
 
