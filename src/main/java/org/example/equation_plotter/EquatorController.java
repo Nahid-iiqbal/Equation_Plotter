@@ -42,13 +42,16 @@ public class EquatorController {
     }
 
     private void addEquation() {
+        String id = "eq-" + System.nanoTime();
         TextField equationInput = new TextField();
+        equationInput.setId(id);  // time based id for each textfield, later used for currentEquations hashmap key
         equationInput.setPromptText("y=f(x)");
         equationInput.getStyleClass().add("glass-input");
 
         equationInput.textProperty().addListener((observable, oldValue, newValue) -> {
+
             if (graphPlotter != null) {
-                graphPlotter.plotEquation(newValue);
+                graphPlotter.addEquationToHashmap(id, newValue);
             }
         });
 
@@ -65,7 +68,11 @@ public class EquatorController {
         row.setPadding(new Insets(5, 0, 5, 0));
         row.getChildren().addAll(equationInput, btn_rmv);
 
-        btn_rmv.setOnAction(event -> equation_container.getChildren().remove(row));
+        btn_rmv.setOnAction(event -> {
+            equation_container.getChildren().remove(row);
+            graphPlotter.removeEquation(id);
+        });
+
         equation_container.getChildren().add(row);
         equationInput.requestFocus();
     }

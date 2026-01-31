@@ -5,6 +5,9 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.input.MouseButton;
 import javafx.scene.paint.Color;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class GraphPlotter extends Canvas {
 
     //graph center
@@ -15,7 +18,10 @@ public class GraphPlotter extends Canvas {
     private double prevMouseX;
     private double prevMouseY;
     //equation
-    private String[] currentEquation = new String[50];
+
+    // Used hashmap<id, eq> for storing equations instead of array.
+    private Map<String, String> currentEquations = new HashMap<>();
+    // private String[] currentEquations = new String[50];
     private int eqCount = 0;
 
     //handles mouse functionalities in graph
@@ -55,9 +61,12 @@ public class GraphPlotter extends Canvas {
             double mouseX = e.getX();
             double mouseY = e.getY();
             double prevScale = scale;
-            double graphX = graphCenterX + (mouseX - getWidth()/2)/prevScale;
-            double graphY = graphCenterY + (getHeight()/2 - mouseY)/prevScale;   // corresponding point (x,y) of the graph
 
+            // corresponding point (x,y) of the graph
+            double graphX = graphCenterX + (mouseX - getWidth()/2)/prevScale;
+            double graphY = graphCenterY + (getHeight()/2 - mouseY)/prevScale;
+
+            // Initial zoom logic (unchanged)
             double zoom = 1.1;
             if (e.getDeltaY() < 0) {
                 scale /= zoom;
@@ -66,6 +75,7 @@ public class GraphPlotter extends Canvas {
                 scale *= zoom;
             }
 
+            // Converted graphCenter
             graphCenterX = graphX - (mouseX - getWidth() / 2) / scale;
             graphCenterY = graphY - (getHeight() / 2 - mouseY) / scale;
 
@@ -76,6 +86,7 @@ public class GraphPlotter extends Canvas {
     }
 
     public void draw() {
+        // Draws the graph (Axis lines, gridboxes)
         GraphicsContext gc = getGraphicsContext2D();
         double w = getWidth();
         double h = getHeight();
@@ -84,9 +95,12 @@ public class GraphPlotter extends Canvas {
         gc.fillRect(0, 0, w, h);
 
         drawGrid(gc, w, h);
-        if (eqCount > 0 && currentEquation[0] != null) {
-            drawFunction(gc, w, h);
-        }
+
+        // I HAVE TO HANDLE THIS CASE LATER -R
+//        if (eqCount > 0 && currentEquations[0] != null) {
+//            drawFunction(gc, w, h);
+//        }
+        drawFunction(gc, w, h);
     }
 
     private void drawGrid(GraphicsContext gc, double w, double h) {
@@ -124,7 +138,7 @@ public class GraphPlotter extends Canvas {
     }
 
     private void drawFunction(GraphicsContext gc, double w, double h) {
-        for (String equation : currentEquation) {
+        for (String equation : currentEquations.values()) {
             if (equation == null || equation.trim().isEmpty()) continue;
             EquationParser parser = new EquationParser(equation);
 
@@ -136,20 +150,20 @@ public class GraphPlotter extends Canvas {
 
             // Iterate over pixel X coordinates
             for (double pixelX = 0; pixelX < w; pixelX++) {
-                // Screen X -> Math X
-                double logicX = graphCenterX + (pixelX - w / 2.0) / scale;
+                // Screen X -> Graph X
+                double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
 
                 // Calculate Math Y
-                double logicY = parser.evaluate(logicX);
+                double graphY = parser.evaluate(graphX);
 
                 // Check for valid result (handle division by zero, etc.)
-                if (Double.isNaN(logicY) || Double.isInfinite(logicY)) {
+                if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
                     firstPoint = true;
                     continue;
                 }
 
                 // Math Y -> Screen Y
-                double pixelY = h / 2.0 - (logicY - graphCenterY) * scale;
+                double pixelY = h / 2.0 - (graphY - graphCenterY) * scale;
 
                 // Draw
                 if (firstPoint) {
@@ -163,13 +177,24 @@ public class GraphPlotter extends Canvas {
         }
     }
 
-    //set equation
-    public void plotEquation(String equationIn) {
-        if (equationIn == null) return;
-        this.currentEquation[eqCount++] = equationIn;
+    //set equation [COMMENTED OUT FOR NOW, WILL REMOVE LATER - R]
+//    public void plotEquation(String equationIn) {
+//        if (equationIn == null) return;
+//        this.currentEquations[eqCount++] = equationIn;
+//        draw();
+//    }
+
+    // plotEquation is "addEquationToHashmap" now :)
+    public void addEquationToHashmap(String id, String equation){
+        if (equation == null) return;
+        currentEquations.put(id, equation);
         draw();
     }
 
+    public void removeEquation(String id){
+        currentEquations.remove(id);
+        draw();
+    }
 
     //graph buttons
     public void zoomIn() {
