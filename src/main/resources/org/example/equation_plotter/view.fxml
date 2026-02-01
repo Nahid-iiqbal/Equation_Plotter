@@ -36,19 +36,19 @@
                     </items>
                 </Menu>
             </menus>
+         <padding>
+            <Insets left="5.0" right="5.0" />
+         </padding>
         </MenuBar>
-        <BorderPane layoutY="21.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="21.0">
+        <BorderPane layoutY="21.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="32.0">
             <left>
                 <BorderPane prefHeight="635.0" prefWidth="226.0" styleClass="left-panel" BorderPane.alignment="CENTER">
 
                     <top>
-                        <javafx.scene.control.Label text="EQUATIONS" textFill="#888888" BorderPane.alignment="CENTER_LEFT">
+                        <javafx.scene.control.Label styleClass="sidebar-title" text="EQUATIONS" textFill="#888888" BorderPane.alignment="CENTER_LEFT">
                             <padding>
                                 <Insets bottom="10.0" left="5.0" />
                             </padding>
-                            <font>
-                                <javafx.scene.text.Font name="System Bold" size="12.0" />
-                            </font>
                         </javafx.scene.control.Label>
                     </top>
 

@@ -1,7 +1,7 @@
 /* --- Main Backgrounds --- */
 .root {
     -fx-background-color: #1e1e1e; /* Deep Dark Grey */
-    -fx-font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    -fx-font-family: "JetBrains Mono", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 /* --- The Left Sidebar (25% Area) --- */
@@ -10,6 +10,11 @@
     -fx-border-color: #3e3e42;
     -fx-border-width: 0 1px 0 0; /* Right border only */
     -fx-padding: 15;
+}
+
+.sidebar-title {
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
 }
 
 /* --- The Equation List Container --- */

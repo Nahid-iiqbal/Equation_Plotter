@@ -6,8 +6,10 @@ import org.mariuszgromada.math.mxparser.mXparser;
 
 public class Launcher {
     public static void main(String[] args) {
+        System.setProperty("prism.order", "d3d,es2,sw");
+        System.setProperty("prism.verbose", "true");
         /* Non-Commercial Use Confirmation */
-        boolean isCallSuccessful = License.iConfirmNonCommercialUse("John Doe");
+        boolean isCallSuccessful = License.iConfirmNonCommercialUse("NahidIqbal");
 
         /* Verification if use type has been already confirmed */
         boolean isConfirmed = License.checkIfUseTypeConfirmed();
