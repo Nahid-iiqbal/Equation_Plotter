@@ -1,10 +1,13 @@
 package org.example.equation_plotter;
 
+import javafx.geometry.VPos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.input.MouseButton;
 import javafx.scene.paint.Color;
+import javafx.scene.text.TextAlignment;
 
+import java.text.DecimalFormat;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,13 +23,17 @@ public class GraphPlotter extends Canvas {
     private double graphCenterX = 0;
     private double graphCenterY = 0;
     private double scale = 50;
+    // Zoom limits
+    private static final double MIN_SCALE = 1.0e-2;
+    private static final double MAX_SCALE = 1.0e5;
+
     //mouse position
     private double prevMouseX;
     private double prevMouseY;
     //equation
 
     // Used hashmap<id, eq> for storing equations instead of array.
-    private Map<String, EquationData> currentEquations = new HashMap<>();
+    private final Map<String, EquationData> currentEquations = new HashMap<>();
     // private String[] currentEquations = new String[50];
     private int eqCount = 0;
 
@@ -49,8 +56,8 @@ public class GraphPlotter extends Canvas {
         //mouse dragged
         setOnMouseDragged(e -> {
             if (e.getButton() == MouseButton.PRIMARY) {
-                double dx = (e.getX() - prevMouseX)/scale;
-                double dy = (e.getY() - prevMouseY)/scale;
+                double dx = (e.getX() - prevMouseX) / scale;
+                double dy = (e.getY() - prevMouseY) / scale;
                 graphCenterX -= dx;
                 graphCenterY += dy;
                 prevMouseX = e.getX();
@@ -69,17 +76,23 @@ public class GraphPlotter extends Canvas {
             double prevScale = scale;
 
             // corresponding point (x,y) of the graph
-            double graphX = graphCenterX + (mouseX - getWidth()/2)/prevScale;
-            double graphY = graphCenterY + (getHeight()/2 - mouseY)/prevScale;
+            double graphX = graphCenterX + (mouseX - getWidth() / 2) / prevScale;
+            double graphY = graphCenterY + (getHeight() / 2 - mouseY) / prevScale;
 
-            // Initial zoom logic (unchanged)
             double zoom = 1.1;
+            double newScale = scale;
+
             if (e.getDeltaY() < 0) {
-                scale /= zoom;
+                newScale /= zoom;
             }
             if (e.getDeltaY() > 0) {
-                scale *= zoom;
+                newScale *= zoom;
             }
+
+            // Clamp the scale
+            if (newScale < MIN_SCALE) newScale = MIN_SCALE;
+            if (newScale > MAX_SCALE) newScale = MAX_SCALE;
+            scale = newScale;
 
             // Converted graphCenter
             graphCenterX = graphX - (mouseX - getWidth() / 2) / scale;
@@ -119,34 +132,110 @@ public class GraphPlotter extends Canvas {
         double left = graphCenterX - w / 2 / scale;
         double top = graphCenterY - h / 2 / scale;
 
+        // Calculate axis positions first so we can draw labels relative to them
+        double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
+        double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
 
         gc.setStroke(Color.web("#333333"));
         gc.setLineWidth(1);
+        gc.setFill(Color.GRAY);
+        gc.setFont(javafx.scene.text.Font.font(10));
 
-        double gridSpacing = 1.0;
-        if (scale < 20) gridSpacing = 5.0;
-        if (scale > 100) gridSpacing = 0.5;
+        // Dynamic grid spacing: keep lines roughly 75 pixels apart
+        double targetPixels = 100.0;
+        double rawStep = targetPixels / scale;
 
-        double startX = (Math.floor(left / gridSpacing) * gridSpacing);
-        for (double x = startX; (x - startX) * scale < w + scale; x += gridSpacing) {
+        // Calculate the magnitude (power of 10)
+        double exponent = Math.floor(Math.log10(rawStep));
+        double magnitude = Math.pow(10, exponent);
+        double fraction = rawStep / magnitude;
+
+        // Snap to nice intervals: 1, 2, 5
+        double niceFraction;
+        int subdivisions;
+
+        if (fraction < 2.0) {
+            niceFraction = 1;
+            subdivisions = 5;
+        } else if (fraction < 5.0) {
+            niceFraction = 2;
+            subdivisions = 4;
+        } else {
+            niceFraction = 5;
+            subdivisions = 5;
+        }
+
+        double majorStep = niceFraction * magnitude;
+        double minorStep = majorStep / subdivisions;
+
+        // --- Draw Minor Grid ---
+        gc.setStroke(Color.web("#2A2A2A"));
+        gc.setLineWidth(1);
+
+        // Vertical Minor
+        double startXMinor = (Math.floor(left / minorStep) * minorStep);
+        for (double x = startXMinor; (x - startXMinor) * scale < w + scale; x += minorStep) {
             double pixelX = (x - graphCenterX) * scale + w / 2;
             gc.strokeLine(pixelX, 0, pixelX, h);
         }
 
-        double startY = (Math.floor((graphCenterY - (h / 2) / scale) / gridSpacing) * gridSpacing);
-        for (double y = startY; (y - startY) * scale < h + scale; y += gridSpacing) {
+        // Horizontal Minor
+        double startYMinor = (Math.floor((graphCenterY - (h / 2) / scale) / minorStep) * minorStep);
+        for (double y = startYMinor; (y - startYMinor) * scale < h + scale; y += minorStep) {
             double pixelY = h / 2 - (y - graphCenterY) * scale;
             gc.strokeLine(0, pixelY, w, pixelY);
+        }
+
+        // --- Draw Major Grid ---
+        gc.setStroke(Color.web("#404040"));
+        gc.setLineWidth(1);
+        gc.setFill(Color.GRAY);
+
+        // Draw Vertical lines (X-axis grid)
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setTextBaseline(VPos.TOP);
+
+        double startX = (Math.floor(left / majorStep) * majorStep);
+        for (double x = startX; (x - startX) * scale < w + scale; x += majorStep) {
+            double pixelX = (x - graphCenterX) * scale + w / 2;
+            gc.strokeLine(pixelX, 0, pixelX, h);
+
+            // Draw X-axis numbers (skip 0 to avoid overlap)
+            if (Math.abs(x) > 1e-9) {
+                gc.fillText(formatNumber(x), pixelX, xAxisPixel + 4);
+            }
+        }
+
+        // Draw Horizontal lines (Y-axis grid)
+        gc.setTextAlign(TextAlignment.RIGHT);
+        gc.setTextBaseline(VPos.CENTER);
+
+        double startY = (Math.floor((graphCenterY - (h / 2) / scale) / majorStep) * majorStep);
+        for (double y = startY; (y - startY) * scale < h + scale; y += majorStep) {
+            double pixelY = h / 2 - (y - graphCenterY) * scale;
+            gc.strokeLine(0, pixelY, w, pixelY);
+
+            // Draw Y-axis numbers (skip 0)
+            if (Math.abs(y) > 1e-9) {
+                gc.fillText(formatNumber(y), yAxisPixel - 4, pixelY);
+            }
         }
 
         gc.setStroke(Color.WHITE);
         gc.setLineWidth(2);
 
-        double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
         gc.strokeLine(yAxisPixel, 0, yAxisPixel, h);
-
-        double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
         gc.strokeLine(0, xAxisPixel, w, xAxisPixel);
+
+        // Draw Origin (0)
+        gc.setTextAlign(TextAlignment.RIGHT);
+        gc.setTextBaseline(VPos.TOP);
+        gc.fillText("0", yAxisPixel - 4, xAxisPixel + 4);
+    }
+
+    private String formatNumber(double d) {
+        DecimalFormat df = new DecimalFormat("#.###");
+        return df.format(d);
     }
 
     private void drawFunction(GraphicsContext gc, double w, double h) {
@@ -161,8 +250,8 @@ public class GraphPlotter extends Canvas {
             boolean firstPoint = true;
 
             // Iterate over pixel X coordinates
-            double step = Math.max(1,scale/50);  // slight optimization
-            for (double pixelX = 0; pixelX < w; pixelX+=step) {
+            double step = Math.max(1, scale / 50);  // slight optimization
+            for (double pixelX = 0; pixelX < w; pixelX += step) {
                 // Screen X -> Graph X
                 double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
 
@@ -198,7 +287,7 @@ public class GraphPlotter extends Canvas {
 //    }
 
     // plotEquation is "addEquationToHashmap" now :)
-    public void addEquationToHashmap(String id, String equation){
+    public void addEquationToHashmap(String id, String equation) {
         if (equation == null) return;
 
         EquationData data = new EquationData();
@@ -209,19 +298,19 @@ public class GraphPlotter extends Canvas {
         draw();
     }
 
-    public void removeEquation(String id){
+    public void removeEquation(String id) {
         currentEquations.remove(id);
         draw();
     }
 
     //graph buttons
     public void zoomIn() {
-        scale *= 1.1;
+        scale = Math.min(scale * 1.1, MAX_SCALE);
         draw();
     }
 
     public void zoomOut() {
-        scale /= 1.1;
+        scale = Math.max(scale / 1.1, MIN_SCALE);
         draw();
     }
 
@@ -230,5 +319,13 @@ public class GraphPlotter extends Canvas {
         graphCenterX = 0;
         graphCenterY = 0;
         draw();
+    }
+
+    public int getEqCount() {
+        return eqCount;
+    }
+
+    public void setEqCount(int eqCount) {
+        this.eqCount = eqCount;
     }
 }

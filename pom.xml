@@ -89,6 +89,11 @@
             <artifactId>MathParser.org-mXparser</artifactId>
             <version>6.1.0</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.mkpaz</groupId>
+            <artifactId>atlantafx-base</artifactId>
+            <version>2.1.0</version>
+        </dependency>
     </dependencies>
 
     <build>

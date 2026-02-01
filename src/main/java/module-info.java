@@ -10,6 +10,7 @@ module org.example.equation_plotter {
     requires org.kordamp.ikonli.fontawesome5;
     requires java.desktop;
     requires MathParser.org.mXparser;
+    requires atlantafx.base;
 
     opens org.example.equation_plotter to javafx.fxml;
     exports org.example.equation_plotter;

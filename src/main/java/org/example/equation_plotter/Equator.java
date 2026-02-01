@@ -1,5 +1,6 @@
 package org.example.equation_plotter;
 
+import atlantafx.base.theme.PrimerDark;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
@@ -11,6 +12,8 @@ import java.net.URL;
 public class Equator extends Application {
     @Override
     public void start(Stage stage) throws IOException {
+        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+        //Application.setUserAgentStylesheet(new NordDark().getUserAgentStylesheet());
         URL fxmlLocation = Equator.class.getResource("view.fxml");
         if (fxmlLocation == null) {
             throw new IllegalStateException("Error: FXML file 'view.fxml' not found in package org.example.equation_plotter");
@@ -20,7 +23,7 @@ public class Equator extends Application {
         Scene scene = new Scene(fxmlLoader.load());
         stage.setTitle("Equator");
         stage.setScene(scene);
-        stage.setMaximized(false);
+        stage.setMaximized(true);
         stage.show();
     }
 
