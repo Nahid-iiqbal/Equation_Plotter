@@ -14,7 +14,7 @@
 
 .sidebar-title {
     -fx-font-weight: bold;
-    -fx-font-size: 12px;
+    -fx-font-size: 15px;
 }
 
 /* --- The Equation List Container --- */
@@ -47,6 +47,8 @@
     -fx-background-radius: 5;
     -fx-cursor: hand;
     -fx-font-weight: bold;
+    -fx-pref-width: 30;
+    -fx-pref-height: 30;
 }
 
 .neon-button:hover {
@@ -65,4 +67,13 @@
     -fx-text-fill: white;
     -fx-prompt-text-fill: #888888;
     -fx-background-radius: 5;
+}
+
+.add-button {
+}
+
+#btn_close_sidebar {
+    -fx-background-color: transparent;
+    -fx-pref-height: 30;
+    -fx-pref-width: 30;
 }

@@ -40,6 +40,10 @@ public class GraphPlotter extends Canvas {
     // private String[] currentEquations = new String[50];
     private int eqCount = 0;
 
+    public int getEquationSize() {
+        return currentEquations.size();
+    }
+
     //handles mouse functionalities in graph
     public GraphPlotter(double width, double height) {
         super(width, height);
