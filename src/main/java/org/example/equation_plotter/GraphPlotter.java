@@ -18,6 +18,15 @@ class EquationData {
     String raw;
     EquationParser parser;
     javafx.concurrent.Task<WritableImage> renderTask;
+    Color color;
+    int r, g, b;
+
+    public void setColor(Color color) {
+        this.color = color;
+        this.r = (int) (color.getRed() * 255);
+        this.g = (int) (color.getGreen() * 255);
+        this.b = (int) (color.getBlue() * 255);
+    }
 }
 
 public class GraphPlotter extends Canvas {
@@ -246,9 +255,9 @@ public class GraphPlotter extends Canvas {
             if (equation == null) continue;
 
             if (equation.parser.isImplicit()) {
-                drawFunction_Implicit(gc, w, h, equation.parser, equation.raw);
+                drawFunction_Implicit(gc, w, h, equation.parser, equation.raw, equation);
             } else {
-                drawFunction_Explicit(gc, w, h, equation.parser);
+                drawFunction_Explicit(gc, w, h, equation.parser, equation);
             }
         }
     }
@@ -257,7 +266,7 @@ public class GraphPlotter extends Canvas {
     private static final int GRAPH_COLOR = 0xFF00FFFF; // ARGB (Cyan)
 
     // CHANGE: Added 'String rawEq' to the arguments
-    private void drawFunction_Implicit(GraphicsContext gc, double w, double h, EquationParser mainParser, String rawEq) {
+    private void drawFunction_Implicit(GraphicsContext gc, double w, double h, EquationParser mainParser, String rawEq, EquationData data) {
         int width = (int) w;
         int height = (int) h;
         int[] buffer = new int[width * height];
@@ -282,7 +291,7 @@ public class GraphPlotter extends Canvas {
 
             // Pass class variables (cx, cy, sc) explicitly
             recursivePlot(buffer, tileX, tileY, tileSize, width, height,
-                    graphCenterX, graphCenterY, scale, localParser);
+                    graphCenterX, graphCenterY, scale, localParser, data.r, data.g, data.b);
         });
 
         WritableImage img = new WritableImage(width, height);
@@ -294,21 +303,17 @@ public class GraphPlotter extends Canvas {
     }
 
     private void recursivePlot(int[] buffer, int x, int y, int size, int w, int h,
-                               double cx, double cy, double sc, EquationParser parser) {
+                               double cx, double cy, double sc, EquationParser parser, int r, int g, int b) {
         // Boundary checks
         if (x >= w || y >= h) return;
 
-        // --- 1. LAG FIX (Speed Optimization) ---
-        // If the user is dragging the graph, stop calculating early (at 2px blocks).
-        // This reduces CPU work by 75% during movement, making it buttery smooth.
+
         if (isInteracting && size <= 0) {
             double gx = cx + (x - w / 2.0) / sc;
             double gy = cy + (h / 2.0 - y) / sc;
             double val = parser.evaluateImplicit(gx, gy);
 
-            // Fast check: Is this block on the line?
             if (Math.abs(val) < (2.0 / sc)) {
-                // Fill the small block with solid color (Fast)
                 for (int dy = 0; dy < size; dy++) {
                     for (int dx = 0; dx < size; dx++) {
                         int px = x + dx;
@@ -322,14 +327,7 @@ public class GraphPlotter extends Canvas {
             return;
         }
 
-        // --- 2. SMOOTHNESS FIX (High Quality Anti-Aliasing) ---
-        // If we are down to 1 pixel, do the fancy math to make it look smooth.
-        // ... inside recursivePlot ...
-
-        // BASE CASE: Single Pixel (Ultra Smooth Mode)
         if (size == 1) {
-            // 1. Calculate the Gradient (Slope) ONCE at the center.
-            // (Calculating gradient 4 times is too slow, so we assume it's constant across the pixel)
             double gxCenter = cx + (x + 0.5 - w / 2.0) / sc;
             double gyCenter = cy + (h / 2.0 - (y + 0.5)) / sc;
 
@@ -376,7 +374,7 @@ public class GraphPlotter extends Canvas {
             if (finalAlpha > 0) {
                 int a = (int) (finalAlpha * 255);
                 // Cyan Color
-                int argb = (a << 24) | (0 << 16) | (255 << 8) | 255;
+                int argb = (a << 24) | (r << 16) | (g << 8) | b;
                 buffer[y * w + x] = argb;
             }
             return;
@@ -404,16 +402,16 @@ public class GraphPlotter extends Canvas {
 
         // Split into 4 smaller blocks and repeat
         int half = size / 2;
-        recursivePlot(buffer, x, y, half, w, h, cx, cy, sc, parser);
-        recursivePlot(buffer, x + half, y, half, w, h, cx, cy, sc, parser);
-        recursivePlot(buffer, x, y + half, half, w, h, cx, cy, sc, parser);
-        recursivePlot(buffer, x + half, y + half, half, w, h, cx, cy, sc, parser);
+        recursivePlot(buffer, x, y, half, w, h, cx, cy, sc, parser, r, g, b);
+        recursivePlot(buffer, x + half, y, half, w, h, cx, cy, sc, parser, r, g, b);
+        recursivePlot(buffer, x, y + half, half, w, h, cx, cy, sc, parser, r, g, b);
+        recursivePlot(buffer, x + half, y + half, half, w, h, cx, cy, sc, parser, r, g, b);
     }
 
-    private void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationParser parser) {
+    private void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationParser parser, EquationData data) {
         gc.beginPath();
-        gc.setStroke(Color.CYAN);
-        gc.setLineWidth(2.5); // Thicker line covers jaggedness better
+        gc.setStroke(data.color);
+        gc.setLineWidth(2.5);
         gc.setLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
         gc.setLineJoin(javafx.scene.shape.StrokeLineJoin.ROUND);
 
@@ -457,7 +455,7 @@ public class GraphPlotter extends Canvas {
         gc.stroke();
     }
 
-    public void addEquationToHashmap(String id, String equation) {
+    public void addEquationToHashmap(String id, String equation, Color color) {
         if (equation == null || equation.trim().isEmpty()) {
             removeEquation(id);
             return;
@@ -465,10 +463,18 @@ public class GraphPlotter extends Canvas {
 
         EquationData data = new EquationData();
         data.raw = equation;
-        data.parser = new EquationParser(equation);  // equation is parsed here
-
+        data.parser = new EquationParser(equation);
+        data.setColor(color != null ? color : Color.CYAN);
         currentEquations.put(id, data);
         draw();
+    }
+
+    public void updateEqColor(String id, Color color) {
+        EquationData data = currentEquations.get(id);
+        if (data != null) {
+            data.setColor(color);
+            draw();
+        }
     }
 
     public void removeEquation(String id) {

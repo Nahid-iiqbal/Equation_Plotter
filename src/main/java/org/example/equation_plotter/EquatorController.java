@@ -5,6 +5,7 @@ import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ColorPicker;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
@@ -12,6 +13,9 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import org.kordamp.ikonli.javafx.FontIcon;
+
+import java.util.Arrays;
+import java.util.List;
 
 public class EquatorController {
     @FXML
@@ -31,6 +35,11 @@ public class EquatorController {
 
     private GraphPlotter graphPlotter;
     private int addEqCount = 0;
+    private final List<Color> defaultColors = Arrays.asList(
+            Color.RED, Color.BLUE, Color.GREEN,
+            Color.ORANGE, Color.PURPLE, Color.BLACK
+    );
+    private int colorIndex = 0;
 
     @FXML
     public void initialize() {
@@ -89,11 +98,10 @@ public class EquatorController {
     private void addEquation() {
         String id = "eq-" + System.nanoTime();
         TextField equationInput = new TextField();
-        equationInput.setId(id);  // time based id for each textfield, later used for currentEquations hashmap key
+        equationInput.setId(id);
         equationInput.setPromptText("y=f(x)");
         equationInput.getStyleClass().add("glass-input");
 
-        equationInput.setOnAction(e -> graphPlotter.addEquationToHashmap(id, equationInput.getText()));
 
         Button btn_rmv = new Button();
         btn_rmv.getStyleClass().add("icon-button");
@@ -102,17 +110,28 @@ public class EquatorController {
         btn_rmv_icon.setIconSize(18);
         btn_rmv.setGraphic(btn_rmv_icon);
 
+        Color initCol = defaultColors.get(colorIndex % defaultColors.size());
+        colorIndex++;
+        ColorPicker cp = new ColorPicker(initCol);
+        cp.getStyleClass().add("dot-color-picker");
+        cp.setOnAction(e -> {
+                    graphPlotter.updateEqColor(id, cp.getValue());
+                }
+        );
+        equationInput.setOnAction(e -> graphPlotter.addEquationToHashmap(id, equationInput.getText(), cp.getValue()));
 
-        HBox row = new HBox(20);
+
+        HBox row = new HBox(10);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(5, 0, 5, 0));
-        row.getChildren().addAll(equationInput, btn_rmv);
+        row.getChildren().addAll(equationInput, btn_rmv, cp);
 
         btn_rmv.setOnAction(event -> {
-            if (addEqCount >= 2) {
-                equation_container.getChildren().remove(row);
-                graphPlotter.removeEquation(id);
-                addEqCount--;
+            equation_container.getChildren().remove(row);
+            graphPlotter.removeEquation(id);
+            addEqCount--;
+            if (addEqCount == 0) {
+                addEquation();
             }
         });
 

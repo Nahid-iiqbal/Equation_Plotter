@@ -61,7 +61,44 @@
     -fx-text-fill: #1e1e1e;
 }
 
-/* --- Input Fields (for your equations) --- */
+/* --- Input Fields (Desmos-like) --- */
+.glass-input {
+    -fx-background-color: #333333;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-border-color: #4c4c4c;
+    -fx-border-width: 1;
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 18px; /* Increased font size */
+    -fx-padding: 8 12;
+    -fx-prompt-text-fill: #808080;
+    -fx-pref-width: 200; /* Ensure it takes space */
+}
+
+.glass-input:focused {
+    -fx-background-color: #3b3b3b;
+    -fx-border-color: #00FFFF; /* Cyan focus to match theme */
+    -fx-border-width: 2;
+    -fx-padding: 7 11; /* Adjust padding to prevent layout shift with thicker border */
+}
+
+/* --- Icon Buttons (Remove X) --- */
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-padding: 5;
+    -fx-background-radius: 50%;
+}
+
+.icon-button:hover {
+    -fx-background-color: rgba(255, 68, 68, 0.15);
+}
+
+.icon-button:pressed {
+    -fx-background-color: rgba(255, 68, 68, 0.3);
+}
+
+/* --- General Text Field Fallback --- */
 .text-field {
     -fx-background-color: #333337;
     -fx-text-fill: white;
@@ -76,4 +113,40 @@
     -fx-background-color: transparent;
     -fx-pref-height: 30;
     -fx-pref-width: 30;
+}
+
+/* 1. Turn the main button into a circle */
+.dot-color-picker {
+    -fx-background-color: transparent;
+    -fx-background-radius: 50%;
+    -fx-border-radius: 50%;
+    -fx-min-width: 40px; /* Reduced outer size */
+    -fx-min-height: 40px;
+    -fx-max-width: 40px;
+    -fx-max-height: 40px;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+/* 2. Hide the dropdown arrow completely */
+.dot-color-picker > .arrow-button {
+    -fx-visible: false;
+    -fx-managed: false;
+    -fx-padding: 0; /* Ensure no padding remains */
+}
+
+/* 3. Center the internal label */
+.dot-color-picker > .color-picker-label {
+    -fx-padding: 0;
+    -fx-alignment: center;
+}
+
+/* 4. Make the inner color rectangle circular and larger */
+.dot-color-picker .picker-color-rect {
+    -fx-arc-width: 100; /* High value makes it a circle */
+    -fx-arc-height: 100;
+    -fx-width: 32px; /* Increased inner circle size */
+    -fx-height: 32px;
+    -fx-stroke: derive(-fx-text-box-border, -20%);
+    -fx-stroke-width: 1;
 }
