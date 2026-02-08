@@ -4,65 +4,107 @@ import org.mariuszgromada.math.mxparser.Argument;
 import org.mariuszgromada.math.mxparser.Expression;
 
 public class EquationParser {
-    private Expression exp;
-    private Argument argx;
-    private Argument argy;
+    private Expression mathExpr;
+    private Expression limitExpr;
+    private final Argument xArg;
+    private final Argument yArg;
     private boolean isImplicit = false;
+    private boolean hasLimit = false;
+    private final String rawInput;
 
-    public EquationParser(String eq) {
-        // Handles circles, parabolas, etc. (Implicit: x^2 + y^2 = 9)
-        if (eq.contains("=") && !eq.trim().startsWith("y=") && !eq.trim().startsWith("f(x)=")) {
-            String[] part = eq.split("=");
+    // Public constructor (used once by UI)
+    public EquationParser(String fullInput) {
+        this.rawInput = fullInput;
+        this.xArg = new Argument("x", 0);
+        this.yArg = new Argument("y", 0);
 
-            // --- CRASH FIX START ---
-            // If the user types "x=", split gives 1 part. We must handle this safely.
-            if (part.length < 2 || part[0].trim().isEmpty() || part[1].trim().isEmpty()) {
-                this.argx = new Argument("x");
-                this.argy = new Argument("y");
-                // Create a "dummy" expression that returns NaN (Not a Number)
-                // This prevents the plotter from drawing anything, but stops the crash.
-                this.exp = new Expression("NaN", argx, argy);
-                isImplicit = true;
-                return;
-            }
-            // --- CRASH FIX END ---
+        String mathPart = fullInput;
+        String limitPart = "";
 
-            String impEq = ("( " + part[0] + " ) - ( " + part[1] + " )");
-            this.argx = new Argument("x");
-            this.argy = new Argument("y");
-            this.exp = new Expression(impEq, argx, argy);
-            isImplicit = true;
+        if (fullInput.contains("{")) {
+            mathPart = fullInput.substring(0, fullInput.indexOf("{")).trim();
+            limitPart = fullInput.substring(fullInput.indexOf("{") + 1, fullInput.lastIndexOf("}")).trim();
+            limitPart = formatLimit(limitPart);
+            hasLimit = true;
         }
-        // Handles Standard Functions (Explicit: y = sin(x))
-        else {
-            String parsed = eq.replaceAll("^(y\\s*=|f\\(x\\)\\s*=)", "").trim();
-            this.argx = new Argument("x");
-            // Initialize argy even for explicit mode to prevent NullPointer if methods interact
-            this.argy = new Argument("y");
-            this.exp = new Expression(parsed, argx);
+
+        if (mathPart.contains("=") && !mathPart.toLowerCase().startsWith("y=") && !mathPart.toLowerCase().startsWith("f(x)=")) {
+            String[] parts = mathPart.split("=");
+            if (parts.length == 2) {
+                mathPart = "(" + parts[0] + ") - (" + parts[1] + ")";
+            }
+            isImplicit = true;
+        } else {
+            mathPart = mathPart.replaceAll("^(y\\s*=|f\\(x\\)\\s*=)", "").trim();
             isImplicit = false;
+        }
+
+        this.mathExpr = new Expression(mathPart, xArg, yArg);
+        if (hasLimit) {
+            this.limitExpr = new Expression(limitPart, xArg, yArg);
+        }
+    }
+
+    // --- KEY FIX: Private constructor for fast cloning ---
+    private EquationParser(String rawInput, boolean isImplicit, boolean hasLimit) {
+        this.rawInput = rawInput;
+        this.isImplicit = isImplicit;
+        this.hasLimit = hasLimit;
+        this.xArg = new Argument("x", 0);
+        this.yArg = new Argument("y", 0);
+    }
+
+    // Fixed cloning method
+    public EquationParser cloneForThread() {
+        // 1. Use private constructor (Fast, no regex)
+        EquationParser copy = new EquationParser(this.rawInput, this.isImplicit, this.hasLimit);
+
+        // 2. Re-create expressions attached to the NEW xArg/yArg
+        copy.mathExpr = new Expression(this.mathExpr.getExpressionString(), copy.xArg, copy.yArg);
+
+        if (this.hasLimit) {
+            copy.limitExpr = new Expression(this.limitExpr.getExpressionString(), copy.xArg, copy.yArg);
+        }
+
+        return copy;
+    }
+
+    public double evaluateImplicit(double x, double y) {
+        try {
+            // Set values on the THREAD-LOCAL arguments
+            this.xArg.setArgumentValue(x);
+            this.yArg.setArgumentValue(y);
+
+            if (hasLimit) {
+                if (limitExpr.calculate() != 1.0) return Double.NaN;
+            }
+
+            return mathExpr.calculate();
+        } catch (Exception e) {
+            return Double.NaN;
         }
     }
 
     public double evaluateExplicit(double xValue) {
-        // Safety check
-        if (argx == null || exp == null) return Double.NaN;
-
-        argx.setArgumentValue(xValue);
-        return exp.calculate();
-    }
-
-    public double evaluateImplicit(double x, double y) {
-        // Safety check
-        if (argx == null || argy == null || exp == null) return Double.NaN;
-
-        argx.setArgumentValue(x);
-        argy.setArgumentValue(y);
         try {
-            return exp.calculate();
+            xArg.setArgumentValue(xValue);
+            double yValue = mathExpr.calculate();
+
+            if (hasLimit) {
+                yArg.setArgumentValue(yValue);
+                if (limitExpr.calculate() != 1.0) return Double.NaN;
+            }
+            return yValue;
         } catch (Exception e) {
             return Double.NaN;
         }
+    }
+
+    private String formatLimit(String limit) {
+        String pattern = "([\\w\\d.]+)\\s*(<=|>=|<|>)\\s*([a-zA-Z])\\s*(<=|>=|<|>)\\s*([\\w\\d.]+)";
+        return limit.replaceAll(pattern, "$1 $2 $3 && $3 $4 $5")
+                .replace(",", " && ")
+                .replace("and", " && ");
     }
 
     public boolean isImplicit() {

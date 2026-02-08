@@ -16,6 +16,7 @@ import java.util.stream.IntStream;
 // New class for storing equation data and parser
 class EquationData {
     String raw;
+    String limit;
     EquationParser parser;
     javafx.concurrent.Task<WritableImage> renderTask;
     Color color;
@@ -271,55 +272,53 @@ public class GraphPlotter extends Canvas {
         int height = (int) h;
         int[] buffer = new int[width * height];
 
-        // --- OPTIMIZATION: Thread-Safe Parallelism ---
-        // 1. Create a "Factory" that makes a new Parser for each thread.
-        // This prevents the crash because every thread gets its own private object.
-        ThreadLocal<EquationParser> threadParser = ThreadLocal.withInitial(() -> new EquationParser(rawEq));
+        ThreadLocal<EquationParser> threadParser = ThreadLocal.withInitial(mainParser::cloneForThread);
 
         int tileSize = 32;
         int numTilesX = (int) Math.ceil(w / tileSize);
         int numTilesY = (int) Math.ceil(h / tileSize);
 
-        // 2. ENABLE PARALLELISM (Safe now!)
-        // We use .parallel() to use 100% of your CPU.
         IntStream.range(0, numTilesX * numTilesY).parallel().forEach(i -> {
             int tileX = (i % numTilesX) * tileSize;
             int tileY = (i / numTilesX) * tileSize;
-
-            // 3. Get the private parser for THIS specific thread
             EquationParser localParser = threadParser.get();
-
-            // Pass class variables (cx, cy, sc) explicitly
             recursivePlot(buffer, tileX, tileY, tileSize, width, height,
-                    graphCenterX, graphCenterY, scale, localParser, data.r, data.g, data.b);
+                    graphCenterX, graphCenterY, scale, localParser, data.r, data.g, data.b, 0);
         });
 
         WritableImage img = new WritableImage(width, height);
-        img.getPixelWriter().setPixels(0, 0, width, height,
-                javafx.scene.image.PixelFormat.getIntArgbInstance(),
-                buffer, 0, width);
-
+        img.getPixelWriter().setPixels(0, 0, width, height, javafx.scene.image.PixelFormat.getIntArgbInstance(), buffer, 0, width);
         gc.drawImage(img, 0, 0);
     }
 
     private void recursivePlot(int[] buffer, int x, int y, int size, int w, int h,
-                               double cx, double cy, double sc, EquationParser parser, int r, int g, int b) {
-        // Boundary checks
-        if (x >= w || y >= h) return;
+                               double cx, double cy, double sc, EquationParser parser,
+                               int r, int g, int b, int depth) {
 
+        // 1. Safety Guard
+        if (depth > 20 || x >= w || y >= h || x + size < 0 || y + size < 0) return;
 
-        if (isInteracting && size <= 0) {
-            double gx = cx + (x - w / 2.0) / sc;
-            double gy = cy + (h / 2.0 - y) / sc;
+        // 2. Base Case: Drawing the Pixel
+        int minSize = isInteracting ? 4 : 1;
+
+        if (size <= minSize) {
+            // Sample the CENTER of the block
+            double gx = cx + (x + size / 2.0 - w / 2.0) / sc;
+            double gy = cy + (h / 2.0 - (y + size / 2.0)) / sc;
             double val = parser.evaluateImplicit(gx, gy);
 
-            if (Math.abs(val) < (2.0 / sc)) {
+            // FIX 1: INCREASE THRESHOLD MULTIPLIER
+            // Changed from 4.0 to 15.0. This ensures the line doesn't break when the function gets steep.
+            double threshold = 15.0 * size / sc;
+
+            if (!Double.isNaN(val) && Math.abs(val) < threshold) {
+                int argb = (255 << 24) | (r << 16) | (g << 8) | b;
                 for (int dy = 0; dy < size; dy++) {
                     for (int dx = 0; dx < size; dx++) {
                         int px = x + dx;
                         int py = y + dy;
-                        if (py < h && px < w) {
-                            buffer[py * w + px] = GRAPH_COLOR;
+                        if (px >= 0 && px < w && py >= 0 && py < h) {
+                            buffer[py * w + px] = argb;
                         }
                     }
                 }
@@ -327,61 +326,7 @@ public class GraphPlotter extends Canvas {
             return;
         }
 
-        if (size == 1) {
-            double gxCenter = cx + (x + 0.5 - w / 2.0) / sc;
-            double gyCenter = cy + (h / 2.0 - (y + 0.5)) / sc;
-
-            double valCenter = parser.evaluateImplicit(gxCenter, gyCenter);
-            double epsilon = 1.0 / sc;
-            double valX = parser.evaluateImplicit(gxCenter + epsilon, gyCenter);
-            double valY = parser.evaluateImplicit(gxCenter, gyCenter + epsilon);
-            double dx = (valX - valCenter) / epsilon;
-            double dy = (valY - valCenter) / epsilon;
-            double len = Math.sqrt(dx * dx + dy * dy);
-
-            if (len < 1e-6) return; // Avoid division by zero
-
-            // 2. Sub-Pixel Sampling (Check 4 corners of the pixel)
-            // This acts like we recursed down to 0.5 pixels
-            double totalAlpha = 0;
-            double[] offsets = {0.25, 0.75}; // The centers of the 4 sub-pixels
-
-            for (double offY : offsets) {
-                for (double offX : offsets) {
-                    // Calculate exact position of sub-pixel
-                    double gx = cx + (x + offX - w / 2.0) / sc;
-                    double gy = cy + (h / 2.0 - (y + offY)) / sc;
-
-                    // Get value at this tiny point
-                    double val = parser.evaluateImplicit(gx, gy);
-
-                    // Use the center gradient to estimate distance
-                    double dist = Math.abs(val / len);
-
-                    // Thicker threshold for sub-pixels (2.5 is soft & nice)
-                    double thickness = 2.5;
-
-                    if (dist < thickness) {
-                        double a = 1.0 - (dist / thickness);
-                        totalAlpha += Math.max(0, Math.min(1, a));
-                    }
-                }
-            }
-
-            // 3. Average the result (divide by 4 samples)
-            double finalAlpha = totalAlpha / 4.0;
-
-            if (finalAlpha > 0) {
-                int a = (int) (finalAlpha * 255);
-                // Cyan Color
-                int argb = (a << 24) | (r << 16) | (g << 8) | b;
-                buffer[y * w + x] = argb;
-            }
-            return;
-        }
-
-        // --- 3. RECURSION (Quadtree Pruning) ---
-        // Check the 4 corners of the current block
+        // 3. Recursive Step & Pruning
         double gx0 = cx + (x - w / 2.0) / sc;
         double gy0 = cy + (h / 2.0 - y) / sc;
         double gx1 = cx + ((x + size) - w / 2.0) / sc;
@@ -392,20 +337,24 @@ public class GraphPlotter extends Canvas {
         double v3 = parser.evaluateImplicit(gx0, gy1);
         double v4 = parser.evaluateImplicit(gx1, gy1);
 
-        // Optimization: If all corners are positive (or all negative), the line
-        // likely doesn't pass through this block. Skip it!
+        // FIX 2: STRICTER PRUNING
+        // Only prune if ALL corners are far from zero (using > 0.1 safety buffer)
+        // and if the block is relatively large.
+        // If the block is small (size < 16), force it to check pixels to avoid gaps.
         boolean allPos = v1 > 0 && v2 > 0 && v3 > 0 && v4 > 0;
         boolean allNeg = v1 < 0 && v2 < 0 && v3 < 0 && v4 < 0;
 
-        // Safety: Don't skip huge blocks (might miss a small closed circle)
-        if ((allPos || allNeg) && size < 256) return;
+        if ((allPos || allNeg) && size > 16) {
+            return;
+        }
 
-        // Split into 4 smaller blocks and repeat
         int half = size / 2;
-        recursivePlot(buffer, x, y, half, w, h, cx, cy, sc, parser, r, g, b);
-        recursivePlot(buffer, x + half, y, half, w, h, cx, cy, sc, parser, r, g, b);
-        recursivePlot(buffer, x, y + half, half, w, h, cx, cy, sc, parser, r, g, b);
-        recursivePlot(buffer, x + half, y + half, half, w, h, cx, cy, sc, parser, r, g, b);
+        if (half < 1) half = 1;
+
+        recursivePlot(buffer, x, y, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
+        recursivePlot(buffer, x + half, y, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
+        recursivePlot(buffer, x, y + half, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
+        recursivePlot(buffer, x + half, y + half, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
     }
 
     private void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationParser parser, EquationData data) {
@@ -455,16 +404,16 @@ public class GraphPlotter extends Canvas {
         gc.stroke();
     }
 
-    public void addEquationToHashmap(String id, String equation, Color color) {
-        if (equation == null || equation.trim().isEmpty()) {
-            removeEquation(id);
-            return;
-        }
 
+    // Inside GraphPlotter.java
+    public void addEquationToHashmap(String id, String fullInput, Color color) {
         EquationData data = new EquationData();
-        data.raw = equation;
-        data.parser = new EquationParser(equation);
-        data.setColor(color != null ? color : Color.CYAN);
+        data.raw = fullInput;
+
+        // The new EquationParser handles the {limit} extraction internally now
+        data.parser = new EquationParser(fullInput);
+
+        data.setColor(color);
         currentEquations.put(id, data);
         draw();
     }
