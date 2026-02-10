@@ -11,6 +11,7 @@ public class EquationParser {
 
     public EquationParser(String eq) {
         // Handles circles, parabolas, etc. (Implicit: x^2 + y^2 = 9)
+        eq = eq.replaceAll("\\s+", "");  // deletes whitespace ("y = " -> "y=")
         if (eq.contains("=") && !eq.trim().startsWith("y=") && !eq.trim().startsWith("f(x)=")) {
             String[] part = eq.split("=");
 

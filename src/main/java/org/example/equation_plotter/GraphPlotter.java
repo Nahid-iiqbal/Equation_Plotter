@@ -1,5 +1,6 @@
 package org.example.equation_plotter;
 
+import javafx.animation.PauseTransition;
 import javafx.geometry.VPos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -7,6 +8,7 @@ import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
 import javafx.scene.paint.Color;
 import javafx.scene.text.TextAlignment;
+import javafx.util.Duration;
 
 import java.text.DecimalFormat;
 import java.util.HashMap;
@@ -20,6 +22,58 @@ class EquationData {
     javafx.concurrent.Task<WritableImage> renderTask;
     Color color;
     int r, g, b;
+
+    // ===== CACHE DATA =====
+    private double[] yCache;
+    private double step;
+    private double xStart;
+    private int startIndex;
+    private int size; // number of stored samples
+
+
+    // testing the idea right now only for Explicit functions
+    public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width){
+        if (parser.isImplicit()) return;
+
+        double visibleWidth = visibleMaxX - visibleMinX;
+        double bufferWidth = visibleWidth * 3;
+
+        size = (int)(width * 3 * 2);
+        step = bufferWidth/size;  // 2 points per pixel
+
+
+
+        xStart = visibleMinX - visibleWidth;
+        yCache = new double[size];
+
+        for(int i=0;i<size;i++){
+            double x = xStart + i*step;
+            yCache[i] = parser.evaluateExplicit(x);
+        }
+
+        startIndex = 0;
+    }
+
+    public double getY(double graphX){
+        double fIndex = (graphX - xStart)/step;
+
+        int i0 = (int)Math.floor(fIndex);
+        int i1 = i0 + 1;
+
+//        i0 = Math.max(0, i0);
+//        i1 = Math.min(size-1, i1);
+        if(i0 < 0 || i1 >= size) return Double.NaN;
+
+        double y0 = yCache[(startIndex + i0) % size];
+        double y1 = yCache[(startIndex + i1) % size];
+
+        double t = fIndex - i0;   // fractional part
+
+        return y0 + t*(y1 - y0);  // interpolation
+    }
+
+
+
 
     public void setColor(Color color) {
         this.color = color;
@@ -42,6 +96,10 @@ public class GraphPlotter extends Canvas {
     //mouse position
     private double prevMouseX;
     private double prevMouseY;
+
+    // timer for mouse scroll (
+    private final PauseTransition scrollEndTimer = new PauseTransition(Duration.millis(120));
+
     //equation
     private boolean isInteracting = false;
     // Used hashmap<id, eq> for storing equations instead of array.
@@ -52,6 +110,20 @@ public class GraphPlotter extends Canvas {
     public int getEquationSize() {
         return currentEquations.size();
     }
+
+    // Reloads cache when scrolling is finished
+    private void onScrollFinished(){
+        // Rebuilds cache (I copied this loop wherever cache is rebuilt.)
+        for (EquationData equation : currentEquations.values()) {
+            if (equation.parser.isImplicit()) continue;
+
+            double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+            double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+            equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        }
+    }
+
+
 
     //handles mouse functionalities in graph
     public GraphPlotter(double width, double height) {
@@ -86,6 +158,16 @@ public class GraphPlotter extends Canvas {
         //mouse released
         setOnMouseReleased(e -> {
             isInteracting = false;
+
+            // Rebuilds cache (I copied this loop wherever cache is rebuilt.)
+            for (EquationData equation : currentEquations.values()) {
+                if (equation.parser.isImplicit()) continue;
+
+                double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+                double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+                equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+            }
+
             draw();
         });
 
@@ -118,9 +200,15 @@ public class GraphPlotter extends Canvas {
             graphCenterX = graphX - (mouseX - getWidth() / 2) / scale;
             graphCenterY = graphY - (getHeight() / 2 - mouseY) / scale;
 
+            scrollEndTimer.playFromStart();
+
             draw();
+
         });
 
+        scrollEndTimer.setOnFinished(e -> {
+            onScrollFinished();
+        });
 
     }
 
@@ -417,16 +505,18 @@ public class GraphPlotter extends Canvas {
 
         boolean firstPoint = true;
 
+        // "step" = int, unit = pixels
         // FIX: Step by 0.1 pixels for smooth curves (10x more points)
         // If dragging, use 2.0 for speed.
-        double step = isInteracting ? 0.5 : 0.1;
+        double step = isInteracting ? 1.0 : 1.0;
 
         for (double pixelX = 0; pixelX < w; pixelX += step) {
             // Screen X -> Graph X
             double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
 
             // Calculate Math Y
-            double graphY = parser.evaluateExplicit(graphX);
+            // double graphY = parser.evaluateExplicit(graphX);
+            double graphY = data.getY(graphX);
 
             // Check for valid result (handle division by zero, etc.)
             if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
@@ -439,7 +529,7 @@ public class GraphPlotter extends Canvas {
 
             // Asymptote Check
             if (!firstPoint) {
-                double prevGraphY = parser.evaluateExplicit(graphCenterX + ((pixelX - step) - w / 2.0) / scale);
+                double prevGraphY = data.getY(graphCenterX + ((pixelX - step) - w / 2.0) / scale);
                 double prevPixelY = h / 2.0 - (prevGraphY - graphCenterY) * scale;
                 if (Math.abs(pixelY - prevPixelY) > h) firstPoint = true;
             }
@@ -466,6 +556,13 @@ public class GraphPlotter extends Canvas {
         data.parser = new EquationParser(equation);
         data.setColor(color != null ? color : Color.CYAN);
         currentEquations.put(id, data);
+
+        // builds cache
+        if (!data.parser.isImplicit()) {
+            double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+            double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+            currentEquations.get(id).buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        }
         draw();
     }
 
@@ -497,6 +594,16 @@ public class GraphPlotter extends Canvas {
         scale = 50;
         graphCenterX = 0;
         graphCenterY = 0;
+
+        // Rebuilds cache (I copied this loop wherever cache is rebuilt.)
+        for (EquationData equation : currentEquations.values()) {
+            if (equation.parser.isImplicit()) continue;
+
+            double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+            double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+            equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        }
+
         draw();
     }
 
