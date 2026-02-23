@@ -85,9 +85,9 @@ public class EquatorController {
     void openSidebarPressed(ActionEvent event) {
         mainBorderPane.setLeft(sideBar);
         btn_open_sidebar.setVisible(false);
-        AnchorPane.setRightAnchor(btn_home, 310.0);
-        AnchorPane.setRightAnchor(btn_zoom_in, 310.0);
-        AnchorPane.setRightAnchor(btn_zoom_out, 310.0);
+        AnchorPane.setRightAnchor(btn_home, 410.0);
+        AnchorPane.setRightAnchor(btn_zoom_in, 410.0);
+        AnchorPane.setRightAnchor(btn_zoom_out, 410.0);
     }
 
     @FXML

@@ -38,7 +38,7 @@
         <BorderPane fx:id="mainBorderPane" layoutY="21.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0"
                     AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="32.0">
             <left>
-                <BorderPane fx:id="sideBar" prefWidth="300.0" styleClass="left-panel" BorderPane.alignment="CENTER">
+                <BorderPane fx:id="sideBar" prefWidth="400.0" styleClass="left-panel" BorderPane.alignment="CENTER">
 
                     <top>
                         <BorderPane BorderPane.alignment="CENTER">
@@ -62,15 +62,17 @@
                     </top>
 
                     <center>
-                        <VBox fx:id="equation_container" spacing="10.0" styleClass="equation-list"
-                              BorderPane.alignment="CENTER">
-                            <padding>
-                                <Insets bottom="5.0" left="5.0" right="5.0" top="5.0"/>
-                            </padding>
-                            <BorderPane.margin>
-                                <Insets/>
-                            </BorderPane.margin>
-                        </VBox>
+                        <ScrollPane fitToHeight="true" fitToWidth="true" hbarPolicy="NEVER" styleClass="dark-scroll-pane">
+                            <VBox fx:id="equation_container" spacing="10.0" styleClass="equation-list"
+                                  BorderPane.alignment="CENTER">
+                                <padding>
+                                    <Insets bottom="5.0" left="5.0" right="5.0" top="5.0"/>
+                                </padding>
+                                <BorderPane.margin>
+                                    <Insets/>
+                                </BorderPane.margin>
+                            </VBox>
+                        </ScrollPane>
                     </center>
 
                     <bottom>
