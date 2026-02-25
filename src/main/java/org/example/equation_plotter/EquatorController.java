@@ -4,9 +4,7 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.Button;
-import javafx.scene.control.ColorPicker;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -110,6 +108,7 @@ public class EquatorController {
     private void addEquation() {
         String id = "eq-" + System.nanoTime();
         TextField equationInput = new TextField();
+        VBox paramBox = new VBox(3);
         equationInput.setId(id);
         equationInput.setPromptText("y=f(x)");
         equationInput.getStyleClass().add("glass-input");
@@ -130,16 +129,29 @@ public class EquatorController {
                     graphPlotter.updateEqColor(id, cp.getValue());
                 }
         );
-        equationInput.setOnAction(e -> graphPlotter.addEquationToHashmap(id, equationInput.getText(), cp.getValue()));
 
+        HBox topRow = new HBox(10);
+        topRow.setAlignment(Pos.CENTER_LEFT);
+        topRow.getChildren().addAll(equationInput, btn_rmv, cp);
 
-        HBox row = new HBox(10);
-        row.setAlignment(Pos.CENTER_LEFT);
-        row.setPadding(new Insets(5, 0, 5, 0));
-        row.getChildren().addAll(equationInput, btn_rmv, cp);
+        VBox sliderBox = new VBox(5);
+
+        VBox equationBlock = new VBox(5);
+        equationBlock.setPadding(new Insets(5, 0, 5, 0));
+        equationBlock.getChildren().addAll(topRow, sliderBox);
+//        row.getChildren().add(paramBox);
+
+        equationInput.setOnAction(e -> {
+            String text = equationInput.getText().trim();
+            graphPlotter.addEquationToHashmap(id, text, cp.getValue());
+
+            EquationData data = graphPlotter.getEquation(id);
+            createSliders(data.parser, sliderBox, id);
+        });
+
 
         btn_rmv.setOnAction(event -> {
-            equation_container.getChildren().remove(row);
+            equation_container.getChildren().remove(equationBlock);
             graphPlotter.removeEquation(id);
             addEqCount--;
             if (addEqCount == 0) {
@@ -147,9 +159,94 @@ public class EquatorController {
             }
         });
 
-        equation_container.getChildren().add(row);
+        equation_container.getChildren().add(equationBlock);
         equationInput.requestFocus();
         addEqCount++;
+    }
+
+    private void createSliders(EquationParser parser, VBox box, String id) {
+        box.getChildren().clear();
+
+        parser.getParameters().forEach((ch, arg) -> {
+
+            // Label showing the current parameter value
+            Label lbl = new Label(ch + " = 1");
+            lbl.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+
+            // Slider with default range -10 to 10 and default value 1
+            Slider s = new Slider(-10, 10, 1);
+            s.setPrefWidth(300);
+            s.setPrefHeight(40);
+            s.setShowTickMarks(true);
+            s.setShowTickLabels(true);
+
+            // Tiny editable text fields for min and max
+            TextField minField = new TextField("-10");
+            TextField maxField = new TextField("10");
+
+            minField.setPrefWidth(45);
+            maxField.setPrefWidth(45);
+            minField.setMaxWidth(45);
+            maxField.setMaxWidth(45);
+            minField.setStyle("-fx-font-size: 10px; -fx-alignment: center;");
+            maxField.setStyle("-fx-font-size: 10px; -fx-alignment: center;");
+
+            // Ensure slider default matches the fields
+            s.setMin(-10);
+            s.setMax(10);
+
+            // Update slider min when user presses Enter in min field
+            minField.setOnAction(e -> {
+                try {
+                    double newMin = Double.parseDouble(minField.getText());
+                    if (newMin < s.getMax()) {
+                        s.setMin(newMin);
+                        graphPlotter.refreshEquationData(id);
+                        graphPlotter.draw();
+                    }
+                } catch (NumberFormatException ignored) {}
+            });
+
+            // Update slider max when user presses Enter in max field
+            maxField.setOnAction(e -> {
+                try {
+                    double newMax = Double.parseDouble(maxField.getText());
+                    if (newMax > s.getMin()) {
+                        s.setMax(newMax);
+                        graphPlotter.refreshEquationData(id);
+                        graphPlotter.draw();
+                    }
+                } catch (NumberFormatException ignored) {}
+            });
+
+            // Update parameter value and label while sliding (per equation)
+            s.valueProperty().addListener((obs, oldv, newv) -> {
+                arg.setArgumentValue(newv.doubleValue());
+                lbl.setText(ch + " = " + String.format("%.2f", newv.doubleValue()));
+                graphPlotter.refreshEquationData(id);
+                graphPlotter.draw();
+            });
+
+            // Refresh all equations only when sliding stops
+            s.valueChangingProperty().addListener((obs, wasChanging, isChanging) -> {
+                if (!isChanging) {
+                    graphPlotter.refreshAllData();
+                    graphPlotter.draw();
+                }
+            });
+
+            // Layout: min field, slider, max field
+            HBox sliderRow = new HBox(5);
+            sliderRow.setAlignment(Pos.CENTER_LEFT);
+//            HBox.setHgrow(s, Priority.ALWAYS);
+            sliderRow.getChildren().addAll(minField, s, maxField);
+
+            // Stack the parameter label and slider row vertically
+            VBox sliderBlock = new VBox(3);
+            sliderBlock.getChildren().addAll(lbl, sliderRow);
+
+            box.getChildren().add(sliderBlock);
+        });
     }
 
     private void setBtn_home() {
