@@ -1,5 +1,7 @@
 package org.example.equation_plotter;
 
+import java.util.*;
+import java.util.regex.*;
 import org.mariuszgromada.math.mxparser.Argument;
 import org.mariuszgromada.math.mxparser.Expression;
 
@@ -12,6 +14,24 @@ public class EquationParser {
     private boolean hasLimit = false;
     private final String rawInput;
     private boolean isLinearInY = false; // Flag for explicit-able implicit equations
+    private Map<Character, Argument> parameters = new HashMap<>();
+
+    private void detectParameters(String expr) {
+
+        Pattern p = Pattern.compile("[a-zA-Z]");
+        Matcher m = p.matcher(expr);
+
+        while(m.find()){
+            char c = m.group().charAt(0);
+
+            if(c=='x' || c=='y' || c=='e') continue; // ignore built-ins
+
+            if(!parameters.containsKey(c)){
+                Argument arg = new Argument(String.valueOf(c), 1); // default = 1
+                parameters.put(c,arg);
+            }
+        }
+    }
 
     public EquationParser(String fullInput) {
         this.rawInput = fullInput;
@@ -39,9 +59,21 @@ public class EquationParser {
             isImplicit = false;
         }
 
-        this.mathExpr = new Expression(mathPart, xArg, yArg);
+        detectParameters(mathPart);
+        List<Argument> args = new ArrayList<>();
+        args.add(xArg);
+        args.add(yArg);
+        args.addAll(parameters.values());
+
+        this.mathExpr = new Expression(mathPart, args.toArray(new Argument[0]));
+
         if (hasLimit) {
-            this.limitExpr = new Expression(limitPart, xArg, yArg);
+            List<Argument> argslimit = new ArrayList<>();
+            args.add(xArg);
+            args.add(yArg);
+            args.addAll(parameters.values());
+
+            this.limitExpr = new Expression(mathPart, argslimit.toArray(new Argument[0]));
         }
 
         // Automatic conversion: If implicit but linear in y, treat as explicit to avoid lag
@@ -139,5 +171,9 @@ public class EquationParser {
 
     public boolean isImplicit() {
         return isImplicit;
+    }
+
+    public Map<Character, Argument> getParameters(){
+        return parameters;
     }
 }

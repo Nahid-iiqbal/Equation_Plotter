@@ -221,7 +221,7 @@ public class GraphPlotter extends Canvas {
         }
     }
 
-    private void refreshAllData() {
+    public void refreshAllData() {
         double graphMinX = graphCenterX - (getWidth() / 2) / scale;
         double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
 
@@ -230,6 +230,19 @@ public class GraphPlotter extends Canvas {
                 equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
             }
         }
+        updateIntersections();
+        updateIntercepts();
+    }
+
+    public void refreshEquationData(String id){
+        double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+        double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+
+        EquationData equation = currentEquations.get(id);
+        if (!equation.parser.isImplicit()) {
+            equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        }
+
         updateIntersections();
         updateIntercepts();
     }
@@ -552,5 +565,9 @@ public class GraphPlotter extends Canvas {
             data.setColor(color);
             draw();
         }
+    }
+
+    public EquationData getEquation(String id) {
+        return currentEquations.get(id);
     }
 }
