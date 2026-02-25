@@ -10,10 +10,16 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.stage.FileChooser;
 import org.kordamp.ikonli.javafx.FontIcon;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Scanner;
 
 public class EquatorController {
     @FXML
@@ -30,6 +36,8 @@ public class EquatorController {
     private Button btn_close_sidebar;
     @FXML
     private Button btn_open_sidebar;
+    @FXML
+    private NavBar navbarController;
 
     private GraphPlotter graphPlotter;
     private int addEqCount = 0;
@@ -41,6 +49,10 @@ public class EquatorController {
 
     @FXML
     public void initialize() {
+        if (navbarController != null) {
+            navbarController.setMainController(this);
+        }
+
         addEquation();
         setBtn_home();
         setBtn_zoom_in();
@@ -83,9 +95,9 @@ public class EquatorController {
     void openSidebarPressed(ActionEvent event) {
         mainBorderPane.setLeft(sideBar);
         btn_open_sidebar.setVisible(false);
-        AnchorPane.setRightAnchor(btn_home, 410.0);
-        AnchorPane.setRightAnchor(btn_zoom_in, 410.0);
-        AnchorPane.setRightAnchor(btn_zoom_out, 410.0);
+        AnchorPane.setRightAnchor(btn_home, 10.0);
+        AnchorPane.setRightAnchor(btn_zoom_in, 10.0);
+        AnchorPane.setRightAnchor(btn_zoom_out, 10.0);
     }
 
     @FXML
@@ -273,4 +285,70 @@ public class EquatorController {
         graphPlotter.zoomOut();
     }
 
+    public void handleNewFile(ActionEvent event) {
+        equation_container.getChildren().clear();
+        graphPlotter.clearAllEquations();
+        colorIndex = 0;
+        addEqCount = 0; // Reset count
+        addEquation();
+    }
+
+    public void handleSaveFile(ActionEvent event) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Equations");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+        File file = fileChooser.showSaveDialog(mainBorderPane.getScene().getWindow());
+
+        if (file != null) {
+            try (PrintWriter writer = new PrintWriter(file)) {
+                equation_container.getChildren().forEach(node -> {
+                    if (node instanceof HBox row) {
+                        row.getChildren().stream()
+                                .filter(n -> n instanceof TextField)
+                                .map(n -> (TextField) n)
+                                .forEach(tf -> writer.println(tf.getText()));
+                    }
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void handleOpenFile(ActionEvent event) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Open Equations");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+        File file = fileChooser.showOpenDialog(mainBorderPane.getScene().getWindow());
+
+        if (file != null) {
+            // Clear existing session but don't add default empty equation yet
+            equation_container.getChildren().clear();
+            graphPlotter.clearAllEquations();
+            colorIndex = 0;
+            addEqCount = 0;
+
+            boolean loadedAny = false;
+            try (Scanner scanner = new Scanner(file)) {
+                while (scanner.hasNextLine()) {
+                    String line = scanner.nextLine();
+                    if (!line.isBlank()) {
+                        addEquation();
+                        HBox lastRow = (HBox) equation_container.getChildren().get(equation_container.getChildren().size() - 1);
+                        TextField tf = (TextField) lastRow.getChildren().get(0);
+                        tf.setText(line);
+                        tf.fireEvent(new ActionEvent());
+                        loadedAny = true;
+                    }
+                }
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+
+            // Ensure at least one equation exists
+            if (!loadedAny) {
+                addEquation();
+            }
+        }
+    }
 }

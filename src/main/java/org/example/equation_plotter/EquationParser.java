@@ -115,10 +115,19 @@ public class EquationParser {
 
     public EquationParser cloneForThread() {
         EquationParser copy = new EquationParser(this.rawInput, this.isImplicit, this.hasLimit, this.isLinearInY);
+
+        // Standard initialization for older mXparser versions
         copy.mathExpr = new Expression(this.mathExpr.getExpressionString(), copy.xArg, copy.yArg);
+
+        // If disableCheckingSyntax is missing, manually check once to "prime" the expression
+        if (copy.mathExpr.checkSyntax()) {
+            // Successfully primed
+        }
+
         if (this.hasLimit) {
             copy.limitExpr = new Expression(this.limitExpr.getExpressionString(), copy.xArg, copy.yArg);
         }
+
         return copy;
     }
 

@@ -12,31 +12,11 @@
         <URL value="@style.css"/>
     </stylesheets>
     <children>
-        <MenuBar layoutY="4.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
-            <menus>
-                <Menu mnemonicParsing="false" text="File">
-                    <items>
-                        <MenuItem mnemonicParsing="false" text="Close"/>
-                    </items>
-                </Menu>
-                <Menu mnemonicParsing="false" text="Edit">
-                    <items>
-                        <MenuItem mnemonicParsing="false" text="Delete"/>
-                    </items>
-                </Menu>
-                <Menu mnemonicParsing="false" text="Help">
-                    <items>
-                        <MenuItem mnemonicParsing="false" text="About"/>
-                    </items>
-                </Menu>
-            </menus>
-            <padding>
-                <Insets left="5.0" right="5.0"/>
-            </padding>
-        </MenuBar>
-
         <BorderPane fx:id="mainBorderPane" layoutY="21.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0"
-                    AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="32.0">
+                    AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+            <top>
+                <fx:include fx:id="navbar" source="navbar.fxml"/>
+            </top>
             <left>
                 <BorderPane fx:id="sideBar" prefWidth="400.0" styleClass="left-panel" BorderPane.alignment="CENTER">
 
@@ -62,7 +42,8 @@
                     </top>
 
                     <center>
-                        <ScrollPane fitToHeight="true" fitToWidth="true" hbarPolicy="NEVER" styleClass="dark-scroll-pane">
+                        <ScrollPane fitToHeight="true" fitToWidth="true" hbarPolicy="NEVER"
+                                    styleClass="dark-scroll-pane">
                             <VBox fx:id="equation_container" spacing="10.0" styleClass="equation-list"
                                   BorderPane.alignment="CENTER">
                                 <padding>

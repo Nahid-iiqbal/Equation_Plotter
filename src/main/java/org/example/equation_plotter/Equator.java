@@ -21,7 +21,9 @@ public class Equator extends Application {
 
         FXMLLoader fxmlLoader = new FXMLLoader(fxmlLocation);
         Scene scene = new Scene(fxmlLoader.load());
-
+        EquatorController mainController = fxmlLoader.getController();
+        NavBar navBarController = (NavBar) fxmlLoader.getNamespace().get("navbarController");
+        navBarController.setMainController(mainController);
         String css = Objects.requireNonNull(Equator.class.getResource("style.css")).toExternalForm();
         scene.getStylesheets().add(css);
         Stage primaryStage = new Stage();
