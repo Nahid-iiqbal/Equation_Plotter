@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.canvas.Canvas?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import java.net.URL?>
+<VBox alignment="CENTER" prefHeight="600.0" prefWidth="800.0" spacing="20.0"
+      style="-fx-background-color: #000000;" xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1">
+    <stylesheets>
+        <URL value="@style.css"/>
+    </stylesheets>
+
+    <ImageView fitHeight="150.0" fitWidth="150.0" pickOnBounds="true" preserveRatio="true">
+        <Image url="@/icon.png"/>
+    </ImageView>
+    <Label text="EQUATOR" styleClass="glow-text">
+        <font>
+            <Font size="54.0"/>
+        </font>
+    </Label>
+    <Label text="Loading your workspace..." textFill="#cccccc">
+        <font>
+            <Font name="JetBrains Mono" size="14.0"/>
+        </font>
+    </Label>
+    <StackPane fx:id="waveContainer" prefHeight="150.0" prefWidth="500.0" style="-fx-background-color: #000000;">
+        <Canvas fx:id="waveCanvas" height="100.0" width="500.0"/>
+    </StackPane>
+</VBox>

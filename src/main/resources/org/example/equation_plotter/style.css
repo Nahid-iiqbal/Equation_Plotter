@@ -4,6 +4,11 @@
     -fx-font-family: "JetBrains Mono", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
+@font-face {
+    font-family: 'Megrim';
+    src: url('fonts/Megrim-Regular.ttf');
+}
+
 /* --- The Left Sidebar (25% Area) --- */
 .left-panel {
     -fx-background-color: #252526; /* Slightly lighter for contrast */
@@ -213,4 +218,23 @@
 /* Corner where scrollbars meet */
 .dark-scroll-pane .corner {
     -fx-background-color: transparent;
+}
+
+.glow-text {
+    /* Use the exact family name printed in your console */
+    -fx-font-family: "Megrim";
+    -fx-text-fill: #00FFFF;
+
+    /* The Glow Effect */
+    -fx-effect: dropshadow(gaussian, #00FFFF, 20, 0.5, 0, 0);
+}
+
+#equationFont {
+    -fx-font-family: "Megrim";
+    -fx-font-size: 50px;
+    -fx-text-fill: #00FFFF;
+    -fx-font-weight: bold;
+    -fx-font-style: normal;
+
+    -fx-effect: dropshadow(gaussian, #00FFFF, 5, 0.4, 0, 0);
 }

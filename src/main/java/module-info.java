@@ -12,6 +12,7 @@ module org.example.equation_plotter {
     requires MathParser.org.mXparser;
     requires atlantafx.base;
     requires javafx.swing;
+    requires java.logging;
 
     opens org.example.equation_plotter to javafx.fxml;
     exports org.example.equation_plotter;
