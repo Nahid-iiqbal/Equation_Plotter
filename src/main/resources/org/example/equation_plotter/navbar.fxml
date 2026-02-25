@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Menu?>
+<?import javafx.scene.control.MenuBar?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.layout.AnchorPane?>
+
+<MenuBar xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.equation_plotter.NavBar">
+    <menus>
+        <Menu mnemonicParsing="false" text="File">
+            <items>
+                <MenuItem fx:id="menuNew" mnemonicParsing="false" onAction="#onNew" text="New" />
+                <MenuItem fx:id="menuOpen" mnemonicParsing="false" onAction="#onOpen" text="Open" />
+                <MenuItem fx:id="menuSave" mnemonicParsing="false" onAction="#onSave" text="Save" />
+                <MenuItem fx:id="menuClose" mnemonicParsing="false" onAction="#onClose" text="Close" />
+            </items>
+        </Menu>
+        <Menu mnemonicParsing="false" text="Edit">
+            <items>
+                <MenuItem fx:id="menuDelete" mnemonicParsing="false" onAction="#onDelete" text="Delete" />
+            </items>
+        </Menu>
+        <Menu mnemonicParsing="false" text="Help">
+            <items>
+                <MenuItem fx:id="menuAbout" mnemonicParsing="false" onAction="#onAbout" text="About" />
+            </items>
+        </Menu>
+    </menus>
+    <padding>
+        <Insets left="5.0" right="5.0" />
+    </padding>
+</MenuBar>

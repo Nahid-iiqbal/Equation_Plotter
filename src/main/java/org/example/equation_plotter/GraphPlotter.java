@@ -4,7 +4,6 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Point2D;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
 import javafx.scene.paint.Color;
 import javafx.util.Duration;
@@ -41,6 +40,7 @@ class EquationData {
     }
 
     public double getY(double graphX) {
+        if (yCache == null) return Double.NaN;
         double fIndex = (graphX - xStart) / step;
         int i0 = (int) Math.floor(fIndex);
         int i1 = i0 + 1;
@@ -455,42 +455,123 @@ public class GraphPlotter extends Canvas {
         gc.setStroke(data.color);
         gc.setLineWidth(2.5);
         boolean firstPoint = true;
+        double prevPixelY = 0;
+
         for (double pixelX = 0; pixelX < w; pixelX += 1.0) {
             double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
             double graphY = data.getY(graphX);
+
             if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
                 firstPoint = true;
                 continue;
             }
+
             double pixelY = h / 2.0 - (graphY - graphCenterY) * scale;
-            if (firstPoint) {
+
+            if (!firstPoint) {
+                double yDiff = Math.abs(pixelY - prevPixelY);
+                if (yDiff > h) {
+                    gc.moveTo(pixelX, pixelY);
+                } else {
+                    gc.lineTo(pixelX, pixelY);
+                }
+            } else {
                 gc.moveTo(pixelX, pixelY);
                 firstPoint = false;
-            } else {
-                gc.lineTo(pixelX, pixelY);
             }
+            prevPixelY = pixelY;
         }
         gc.stroke();
     }
 
     private void drawFunction_Implicit(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data) {
-        int width = (int) w, height = (int) h;
-        int[] buffer = new int[width * height];
+        int width = (int) w;
+        int height = (int) h;
+
         ThreadLocal<EquationParser> threadParser = ThreadLocal.withInitial(mainParser::cloneForThread);
-        int tileSize = 32;
-        int numTilesX = (int) Math.ceil(w / tileSize), numTilesY = (int) Math.ceil(h / tileSize);
+
+        int tileSize = 16; // Standard starting tile size
+        int numTilesX = (int) Math.ceil(w / tileSize);
+        int numTilesY = (int) Math.ceil(h / tileSize);
+
         IntStream.range(0, numTilesX * numTilesY).parallel().forEach(i -> {
-            int tileX = (i % numTilesX) * tileSize, tileY = (i / numTilesX) * tileSize;
-            recursivePlot(buffer, tileX, tileY, tileSize, width, height, graphCenterX, graphCenterY, scale, threadParser.get(), data.r, data.g, data.b, 0);
+            int tileX = (i % numTilesX) * tileSize;
+            int tileY = (i / numTilesX) * tileSize;
+
+            // Execute the optimized recursive plot
+            optimizedRecursivePlot(gc, tileX, tileY, tileSize, width, height,
+                    graphCenterX, graphCenterY, scale,
+                    threadParser.get(), data, 0);
         });
-        WritableImage img = new WritableImage(width, height);
-        img.getPixelWriter().setPixels(0, 0, width, height, javafx.scene.image.PixelFormat.getIntArgbInstance(), buffer, 0, width);
-        gc.drawImage(img, 0, 0);
+    }
+
+    private void optimizedRecursivePlot(GraphicsContext gc, int x, int y, int size, int w, int h,
+                                        double cx, double cy, double sc, EquationParser parser,
+                                        EquationData data, int depth) {
+        // 1. Calculate corners in graph coordinates
+        double x0 = cx + (x - w / 2.0) / sc;
+        double y0 = cy + (h / 2.0 - y) / sc;
+        double x1 = cx + (x + size - w / 2.0) / sc;
+        double y1 = cy + (h / 2.0 - (y + size)) / sc;
+
+        // 2. Evaluate function at all four corners
+        double v1 = parser.evaluateImplicit(x0, y0);
+        double v2 = parser.evaluateImplicit(x1, y0);
+        double v3 = parser.evaluateImplicit(x1, y1);
+        double v4 = parser.evaluateImplicit(x0, y1);
+
+        // 3. PRUNING: If all corners have the same sign, the curve (f=0) likely isn't here
+        if (Math.signum(v1) == Math.signum(v2) &&
+                Math.signum(v2) == Math.signum(v3) &&
+                Math.signum(v3) == Math.signum(v4)) {
+            return;
+        }
+
+        // 4. SUBDIVIDE
+        int minSize = isInteracting ? 2 : 1;
+        if (size > minSize) {
+            int half = size / 2;
+            optimizedRecursivePlot(gc, x, y, half, w, h, cx, cy, sc, parser, data, depth + 1);
+            optimizedRecursivePlot(gc, x + half, y, half, w, h, cx, cy, sc, parser, data, depth + 1);
+            optimizedRecursivePlot(gc, x, y + half, half, w, h, cx, cy, sc, parser, data, depth + 1);
+            optimizedRecursivePlot(gc, x + half, y + half, half, w, h, cx, cy, sc, parser, data, depth + 1);
+        } else {
+            // 5. RENDER: Draw a small line segment using basic Marching Squares logic
+            drawMarchingSquareSegment(gc, x, y, size, v1, v2, v3, v4, data.color);
+        }
+    }
+
+    private void drawMarchingSquareSegment(GraphicsContext gc, int x, int y, int size,
+                                           double v1, double v2, double v3, double v4, Color color) {
+        synchronized (gc) {
+            gc.setStroke(color);
+            gc.setLineWidth(1.5);
+
+            // Simple implementation: connect midpoints of edges where signs change
+            // Top edge
+            boolean top = Math.signum(v1) != Math.signum(v2);
+            // Right edge
+            boolean right = Math.signum(v2) != Math.signum(v3);
+            // Bottom edge
+            boolean bottom = Math.signum(v3) != Math.signum(v4);
+            // Left edge
+            boolean left = Math.signum(v4) != Math.signum(v1);
+
+            double midX = x + size / 2.0;
+            double midY = y + size / 2.0;
+
+            if (top && bottom) gc.strokeLine(midX, y, midX, y + size);
+            if (left && right) gc.strokeLine(x, midY, x + size, midY);
+            if (top && left) gc.strokeLine(midX, y, x, midY);
+            if (top && right) gc.strokeLine(midX, y, x + size, midY);
+            if (bottom && left) gc.strokeLine(midX, y + size, x, midY);
+            if (bottom && right) gc.strokeLine(midX, y + size, x + size, midY);
+        }
     }
 
     private void recursivePlot(int[] buffer, int x, int y, int size, int w, int h, double cx, double cy, double sc, EquationParser parser, int r, int g, int b, int depth) {
-        if (depth > 20 || x >= w || y >= h || x + size < 0 || y + size < 0) return;
-        int minSize = isInteracting ? 4 : 1;
+        if (depth > 10 || x >= w || y >= h || x + size < 0 || y + size < 0) return;
+        int minSize = isInteracting ? 2 : 1;
         if (size <= minSize) {
             double gx = cx + (x + size / 2.0 - w / 2.0) / sc;
             double gy = cy + (h / 2.0 - (y + size / 2.0)) / sc;
@@ -552,5 +633,10 @@ public class GraphPlotter extends Canvas {
             data.setColor(color);
             draw();
         }
+    }
+
+    public void clearAllEquations() {
+        currentEquations.clear();
+        draw();
     }
 }
