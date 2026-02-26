@@ -7,6 +7,7 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
@@ -14,6 +15,7 @@ import javafx.stage.StageStyle;
 import javafx.util.Duration;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,6 +28,7 @@ public class Equator extends Application {
     public void start(Stage stage) throws IOException {
         Stage welcomeStage = new Stage();
         welcomeStage.initStyle(StageStyle.UNDECORATED);
+        welcomeStage.getIcons().add(new Image(Objects.requireNonNull(Equator.class.getResourceAsStream("/icon.png"))));
 
         FXMLLoader welcomeLoader = new FXMLLoader(Equator.class.getResource("welcome.fxml"));
         Parent welcomeRoot = welcomeLoader.load();
@@ -111,6 +114,7 @@ public class Equator extends Application {
                 Scene scene = new Scene(fxmlLoader.load());
                 mainStage.setScene(scene);
                 mainStage.setTitle("Equator");
+                mainStage.getIcons().add(new Image(Objects.requireNonNull(Equator.class.getResourceAsStream("/icon.png"))));
                 mainStage.setMaximized(true);
                 mainStage.show();
             } catch (IOException ex) {

@@ -13,6 +13,7 @@ module org.example.equation_plotter {
     requires atlantafx.base;
     requires javafx.swing;
     requires java.logging;
+    requires jdk.jsobject;
 
     opens org.example.equation_plotter to javafx.fxml;
     exports org.example.equation_plotter;

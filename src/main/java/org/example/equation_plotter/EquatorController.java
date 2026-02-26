@@ -1,16 +1,20 @@
 package org.example.equation_plotter;
 
+import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
+import netscape.javascript.JSObject;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.io.File;
@@ -52,18 +56,19 @@ public class EquatorController {
         if (navbarController != null) {
             navbarController.setMainController(this);
         }
+        graphPlotter = new GraphPlotter(graph_container.getPrefWidth(), graph_container.getPrefHeight());
+        graphPlotter.prefWidthProperty().bind(graph_container.widthProperty());
+        graphPlotter.prefHeightProperty().bind(graph_container.heightProperty());
 
+        graph_container.getChildren().addFirst(graphPlotter);
+        graph_container.setStyle("-fx-background-color: transparent;");
+        graphPlotter.toBack();
+        
         addEquation();
         setBtn_home();
         setBtn_zoom_in();
         setBtn_zoom_out();
         initSidebarButtons();
-        graphPlotter = new GraphPlotter(graph_container.getPrefWidth(), graph_container.getPrefHeight());
-        graphPlotter.widthProperty().bind(graph_container.widthProperty());
-        graphPlotter.heightProperty().bind(graph_container.heightProperty());
-        graph_container.getChildren().addFirst(graphPlotter);
-        graph_container.setStyle("-fx-background-color: transparent;");
-        graphPlotter.toBack();
     }
 
     private void initSidebarButtons() {
@@ -107,12 +112,44 @@ public class EquatorController {
 
     private void addEquation() {
         String id = "eq-" + System.nanoTime();
-        TextField equationInput = new TextField();
-        VBox paramBox = new VBox(3);
-        equationInput.setId(id);
-        equationInput.setPromptText("y=f(x)");
-        equationInput.getStyleClass().add("glass-input");
 
+        WebView webView = new WebView();
+        webView.setPrefSize(350, 60); // Updated size for better visibility
+        webView.setContextMenuEnabled(false);
+
+        // Standard event filter for keys
+        webView.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            String command = null;
+            switch (event.getCode()) {
+                case BACK_SPACE:
+                    command = "deleteBackward";
+                    break;
+                case LEFT:
+                    command = "moveToPreviousChar";
+                    break;
+                case RIGHT:
+                    command = "moveToNextChar";
+                    break;
+                case UP:
+                    command = "moveUp";
+                    break;
+                case DOWN:
+                    command = "moveDown";
+                    break;
+                default:
+                    break;
+            }
+            if (command != null) {
+                webView.getEngine().executeScript("document.getElementById('mf').executeCommand('" + command + "');");
+                event.consume();
+            }
+        });
+
+        // Load the HTML file
+        java.net.URL htmlUrl = getClass().getResource("/org/example/equation_plotter/math_input.html");
+        if (htmlUrl != null) {
+            webView.getEngine().load(htmlUrl.toExternalForm());
+        }
 
         Button btn_rmv = new Button();
         btn_rmv.getStyleClass().add("icon-button");
@@ -125,62 +162,57 @@ public class EquatorController {
         colorIndex++;
         ColorPicker cp = new ColorPicker(initCol);
         cp.getStyleClass().add("dot-color-picker");
-        cp.setOnAction(e -> {
-                    graphPlotter.updateEqColor(id, cp.getValue());
-                }
-        );
 
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
-        topRow.getChildren().addAll(equationInput, btn_rmv, cp);
+        topRow.getChildren().addAll(webView, btn_rmv, cp);
 
         VBox sliderBox = new VBox(5);
-
         VBox equationBlock = new VBox(5);
         equationBlock.setPadding(new Insets(5, 0, 5, 0));
         equationBlock.getChildren().addAll(topRow, sliderBox);
-//        row.getChildren().add(paramBox);
 
-        equationInput.setOnAction(e -> {
-            String text = equationInput.getText().trim();
-            graphPlotter.addEquationToHashmap(id, text, cp.getValue());
+        // --- THE FIX: MOVE LOGIC INSIDE THE LOAD WORKER ---
+        MathBridge bridge = new MathBridge(id, graphPlotter, cp, sliderBox, this);
 
-            EquationData data = graphPlotter.getEquation(id);
-            createSliders(data.parser, sliderBox, id);
+        webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == Worker.State.SUCCEEDED) {
+                JSObject window = (JSObject) webView.getEngine().executeScript("window");
+                window.setMember("javaConnector", bridge);
+
+                // If there's already text in the field (from a file load), plot it now
+                String currentMath = (String) webView.getEngine().executeScript("document.getElementById('mf').getValue('ascii-math')");
+                if (currentMath != null && !currentMath.trim().isEmpty()) {
+                    bridge.updateMath(currentMath);
+                }
+            }
         });
-
 
         btn_rmv.setOnAction(event -> {
             equation_container.getChildren().remove(equationBlock);
             graphPlotter.removeEquation(id);
             addEqCount--;
-            if (addEqCount == 0) {
-                addEquation();
-            }
+            if (addEqCount == 0) addEquation();
         });
 
         equation_container.getChildren().add(equationBlock);
-        equationInput.requestFocus();
         addEqCount++;
     }
 
-    private void createSliders(EquationParser parser, VBox box, String id) {
+    public void createSlidersBridge(EquationParser parser, VBox box, String id) {
         box.getChildren().clear();
 
         parser.getParameters().forEach((ch, arg) -> {
 
-            // Label showing the current parameter value
             Label lbl = new Label(ch + " = 1");
             lbl.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
 
-            // Slider with default range -10 to 10 and default value 1
             Slider s = new Slider(-10, 10, 1);
             s.setPrefWidth(300);
             s.setPrefHeight(40);
             s.setShowTickMarks(true);
             s.setShowTickLabels(true);
 
-            // Tiny editable text fields for min and max
             TextField minField = new TextField("-10");
             TextField maxField = new TextField("10");
 
@@ -191,11 +223,9 @@ public class EquatorController {
             minField.setStyle("-fx-font-size: 10px; -fx-alignment: center;");
             maxField.setStyle("-fx-font-size: 10px; -fx-alignment: center;");
 
-            // Ensure slider default matches the fields
             s.setMin(-10);
             s.setMax(10);
 
-            // Update slider min when user presses Enter in min field
             minField.setOnAction(e -> {
                 try {
                     double newMin = Double.parseDouble(minField.getText());
@@ -208,7 +238,6 @@ public class EquatorController {
                 }
             });
 
-            // Update slider max when user presses Enter in max field
             maxField.setOnAction(e -> {
                 try {
                     double newMax = Double.parseDouble(maxField.getText());
@@ -221,15 +250,20 @@ public class EquatorController {
                 }
             });
 
-            // Update parameter value and label while sliding (per equation)
+            javafx.animation.PauseTransition sliderThrottle = new javafx.animation.PauseTransition(javafx.util.Duration.millis(50));
+
             s.valueProperty().addListener((obs, oldv, newv) -> {
                 arg.setArgumentValue(newv.doubleValue());
                 lbl.setText(ch + " = " + String.format("%.2f", newv.doubleValue()));
-                graphPlotter.refreshEquationData(id);
-                graphPlotter.draw();
+
+                sliderThrottle.setOnFinished(event -> {
+                    graphPlotter.refreshEquationData(id);
+                    graphPlotter.drawGraphLayer();
+                });
+
+                sliderThrottle.playFromStart();
             });
 
-            // Refresh all equations only when sliding stops
             s.valueChangingProperty().addListener((obs, wasChanging, isChanging) -> {
                 if (!isChanging) {
                     graphPlotter.refreshAllData();
@@ -237,13 +271,10 @@ public class EquatorController {
                 }
             });
 
-            // Layout: min field, slider, max field
             HBox sliderRow = new HBox(5);
             sliderRow.setAlignment(Pos.CENTER_LEFT);
-//            HBox.setHgrow(s, Priority.ALWAYS);
             sliderRow.getChildren().addAll(minField, s, maxField);
 
-            // Stack the parameter label and slider row vertically
             VBox sliderBlock = new VBox(3);
             sliderBlock.getChildren().addAll(lbl, sliderRow);
 
@@ -291,8 +322,54 @@ public class EquatorController {
         equation_container.getChildren().clear();
         graphPlotter.clearAllEquations();
         colorIndex = 0;
-        addEqCount = 0; // Reset count
+        addEqCount = 0;
         addEquation();
+    }
+
+    public void handleOpenFile(ActionEvent event) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Open Equations");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+        File file = fileChooser.showOpenDialog(mainBorderPane.getScene().getWindow());
+
+        if (file != null) {
+            equation_container.getChildren().clear();
+            graphPlotter.clearAllEquations();
+            colorIndex = 0;
+            addEqCount = 0;
+
+            boolean loadedAny = false;
+            try (Scanner scanner = new Scanner(file)) {
+                while (scanner.hasNextLine()) {
+                    String line = scanner.nextLine().trim();
+                    if (!line.isEmpty()) {
+                        addEquation();
+
+                        // Navigate: VBox (equationBlock) -> HBox (topRow) -> TextField
+                        VBox equationBlock = (VBox) equation_container.getChildren().getLast();
+                        HBox topRow = (HBox) equationBlock.getChildren().get(0);
+                        TextField tf = (TextField) topRow.getChildren().get(0);
+                        ColorPicker cp = (ColorPicker) topRow.getChildren().get(2);
+
+                        tf.setText(line);
+
+                        // Manually trigger the plot since setText() doesn't fire listeners
+                        graphPlotter.addEquationToHashmap(tf.getId(), line, cp.getValue());
+                        loadedAny = true;
+                    }
+                }
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+
+            if (!loadedAny) {
+                addEquation();
+            }
+
+            // Final refresh to ensure all points and lines calculate
+            graphPlotter.refreshAllData();
+            graphPlotter.draw();
+        }
     }
 
     public void handleSaveFile(ActionEvent event) {
@@ -304,52 +381,16 @@ public class EquatorController {
         if (file != null) {
             try (PrintWriter writer = new PrintWriter(file)) {
                 equation_container.getChildren().forEach(node -> {
-                    if (node instanceof HBox row) {
-                        row.getChildren().stream()
-                                .filter(n -> n instanceof TextField)
-                                .map(n -> (TextField) n)
-                                .forEach(tf -> writer.println(tf.getText()));
+                    if (node instanceof VBox equationBlock && !equationBlock.getChildren().isEmpty()) {
+                        HBox topRow = (HBox) equationBlock.getChildren().get(0);
+                        TextField tf = (TextField) topRow.getChildren().get(0);
+                        if (!tf.getText().isBlank()) {
+                            writer.println(tf.getText());
+                        }
                     }
                 });
             } catch (IOException e) {
                 e.printStackTrace();
-            }
-        }
-    }
-
-    public void handleOpenFile(ActionEvent event) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Open Equations");
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
-        File file = fileChooser.showOpenDialog(mainBorderPane.getScene().getWindow());
-
-        if (file != null) {
-            // Clear existing session but don't add default empty equation yet
-            equation_container.getChildren().clear();
-            graphPlotter.clearAllEquations();
-            colorIndex = 0;
-            addEqCount = 0;
-
-            boolean loadedAny = false;
-            try (Scanner scanner = new Scanner(file)) {
-                while (scanner.hasNextLine()) {
-                    String line = scanner.nextLine();
-                    if (!line.isBlank()) {
-                        addEquation();
-                        HBox lastRow = (HBox) equation_container.getChildren().get(equation_container.getChildren().size() - 1);
-                        TextField tf = (TextField) lastRow.getChildren().get(0);
-                        tf.setText(line);
-                        tf.fireEvent(new ActionEvent());
-                        loadedAny = true;
-                    }
-                }
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            }
-
-            // Ensure at least one equation exists
-            if (!loadedAny) {
-                addEquation();
             }
         }
     }

@@ -4,86 +4,85 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Point2D;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.image.WritableImage;
 import javafx.scene.input.MouseButton;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.util.Duration;
 
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.ForkJoinPool;
 import java.util.stream.IntStream;
 
-class EquationData {
-    String raw;
-    EquationParser parser;
-    Color color;
-    int r, g, b;
+//class EquationData {
+//    String raw;
+//    EquationParser parser;
+//    Color color;
+//    int r, g, b;
+//
+//    private double[] yCache;
+//    private double step;
+//    private double xStart;
+//    private int startIndex;
+//    private int size;
+//
+//    public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
+//        if (parser.isImplicit()) return;
+//        double visibleWidth = visibleMaxX - visibleMinX;
+//        double bufferWidth = visibleWidth * 3;
+//        size = (int) (width * 3 * 2);
+//        step = bufferWidth / size;
+//        xStart = visibleMinX - visibleWidth;
+//        yCache = new double[size];
+//
+//        // Use all CPU cores to calculate standard functions instantly
+//        java.util.stream.IntStream.range(0, size).parallel().forEach(i -> {
+//            double x = xStart + i * step;
+//            yCache[i] = parser.evaluateExplicit(x);
+//        });
+//
+//        startIndex = 0;
+//    }
+//
+//    public double getY(double graphX) {
+//        double fIndex = (graphX - xStart) / step;
+//        int i0 = (int) Math.floor(fIndex);
+//        int i1 = i0 + 1;
+//        if (i0 < 0 || i1 >= size) return Double.NaN;
+//        double y0 = yCache[(startIndex + i0) % size];
+//        double y1 = yCache[(startIndex + i1) % size];
+//        double t = fIndex - i0;
+//        return y0 + t * (y1 - y0);
+//    }
+//
+//    public void setColor(Color color) {
+//        this.color = color;
+//        this.r = (int) (color.getRed() * 255);
+//        this.g = (int) (color.getGreen() * 255);
+//        this.b = (int) (color.getBlue() * 255);
+//    }
+//}
+//
+//record Points(double x, double y, Color color) {
+//    public double getX() {
+//        return x;
+//    }
+//
+//    public double getY() {
+//        return y;
+//    }
+//
+//    public Paint getColor() {
+//        return color;
+//    }
+//}
 
-    private double[] yCache;
-    private double step;
-    private double xStart;
-    private int startIndex;
-    private int size;
-
-    public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
-        if (parser.isImplicit()) return;
-        double visibleWidth = visibleMaxX - visibleMinX;
-        double bufferWidth = visibleWidth * 3;
-        size = (int) (width * 3 * 2);
-        step = bufferWidth / size;
-        xStart = visibleMinX - visibleWidth;
-        yCache = new double[size];
-        for (int i = 0; i < size; i++) {
-            double x = xStart + i * step;
-            yCache[i] = parser.evaluateExplicit(x);
-        }
-        startIndex = 0;
-    }
-
-    public double getY(double graphX) {
-        double fIndex = (graphX - xStart) / step;
-        int i0 = (int) Math.floor(fIndex);
-        int i1 = i0 + 1;
-        if (i0 < 0 || i1 >= size) return Double.NaN;
-        double y0 = yCache[(startIndex + i0) % size];
-        double y1 = yCache[(startIndex + i1) % size];
-        double t = fIndex - i0;
-        return y0 + t * (y1 - y0);
-    }
-
-    public void setColor(Color color) {
-        this.color = color;
-        this.r = (int) (color.getRed() * 255);
-        this.g = (int) (color.getGreen() * 255);
-        this.b = (int) (color.getBlue() * 255);
-    }
-}
-
-class Points {
-    private final double x;
-    private final double y;
-    private final Color color;
-
-    public Points(double x, double y, Color color) {
-        this.x = x;
-        this.y = y;
-        this.color = color;
-    }
-
-    public double getX() {
-        return x;
-    }
-
-    public double getY() {
-        return y;
-    }
-
-    public Color getColor() {
-        return color;
-    }
-}
-
-public class GraphPlotter extends Canvas {
+public class GraphPlotter extends StackPane {
+    // Grabs the exact number of logical threads your CPU possesses
+    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
+    // Creates a dedicated pool that uses ALL of them
+    private static final ForkJoinPool MAX_POWER_POOL = new ForkJoinPool(CPU_CORES);
+    private final Canvas gridCanvas;
     private double graphCenterX = 0;
     private double graphCenterY = 0;
     private double scale = 50;
@@ -108,9 +107,32 @@ public class GraphPlotter extends Canvas {
     private final List<Point2D> interceptPoints = new ArrayList<>();
     private final Set<Point2D> selectedPoints = new LinkedHashSet<>();
     private static final double SNAP_THRESHOLD_PX = 30.0;
+    private final Canvas graphCanvas;
+    private final Canvas overlayCanvas;
+    // Cache Trackers for Implicit Functions
+    private final Map<String, CachedImplicit> implicitCache = new HashMap<>();
+    private final Map<String, javafx.concurrent.Task<?>> activeTasks = new HashMap<>();
 
     public GraphPlotter(double width, double height) {
-        super(width, height);
+        setPrefSize(width, height);
+
+        // 1. Initialize the canvases
+        gridCanvas = new Canvas(width, height);
+        graphCanvas = new Canvas(width, height);
+        overlayCanvas = new Canvas(width, height);
+
+        // 2. Bind their sizes so they resize perfectly when the window resizes
+        gridCanvas.widthProperty().bind(this.widthProperty());
+        gridCanvas.heightProperty().bind(this.heightProperty());
+        graphCanvas.widthProperty().bind(this.widthProperty());
+        graphCanvas.heightProperty().bind(this.heightProperty());
+        overlayCanvas.widthProperty().bind(this.widthProperty());
+        overlayCanvas.heightProperty().bind(this.heightProperty());
+
+        // 3. Add them to the StackPane (Order matters! Bottom to Top)
+        getChildren().addAll(gridCanvas, graphCanvas, overlayCanvas);
+
+
         widthProperty().addListener(e -> draw());
         heightProperty().addListener(e -> draw());
 
@@ -161,11 +183,11 @@ public class GraphPlotter extends Canvas {
             isMouseDown = false;
             isInteracting = false;
             refreshAllData();
-            getScene().setCursor(isSnapPoint ? javafx.scene.Cursor.HAND : javafx.scene.Cursor.DEFAULT);
             draw();
         });
 
         setOnScroll(e -> {
+            isInteracting = true; // FIX: Prevent thread spam while scrolling
             double mouseX = e.getX();
             double mouseY = e.getY();
             double prevScale = scale;
@@ -184,6 +206,7 @@ public class GraphPlotter extends Canvas {
         });
 
         scrollEndTimer.setOnFinished(e -> {
+            isInteracting = false;
             refreshAllData();
             draw();
         });
@@ -230,6 +253,8 @@ public class GraphPlotter extends Canvas {
         // 3. Smooth Curve tracking
         double bestDist = Double.MAX_VALUE;
         for (EquationData eq : currentEquations.values()) {
+
+            // FIX: This line MUST be uncommented to prevent NPE lag while panning
             if (eq.parser.isImplicit()) continue;
 
             double cy = eq.getY(gx);
@@ -270,7 +295,6 @@ public class GraphPlotter extends Canvas {
         updateIntersections();
         updateIntercepts();
     }
-
 
     private void updateIntersections() {
         intersectionPoints.clear();
@@ -343,36 +367,64 @@ public class GraphPlotter extends Canvas {
         }
     }
 
+
+    // Call this when you need to completely refresh everything (e.g., resizing, panning, zooming)
     public void draw() {
-        GraphicsContext gc = getGraphicsContext2D();
+        drawGridLayer();
+        drawGraphLayer();
+        drawOverlayLayer();
+    }
+
+    private void drawGridLayer() {
+        GraphicsContext gc = gridCanvas.getGraphicsContext2D();
         double w = getWidth();
         double h = getHeight();
+        if (w == 0 || h == 0) return;
+
         gc.clearRect(0, 0, w, h);
         gc.setFill(Color.web("#1e1e1e"));
         gc.fillRect(0, 0, w, h);
 
-        drawGrid(gc, w, h);
-        drawFunction(gc, w, h);
+        drawGrid(gc, w, h); // Your existing drawGrid method
+    }
 
-        // Draw manually added points
+    void drawGraphLayer() {
+        GraphicsContext gc = graphCanvas.getGraphicsContext2D();
+        double w = getWidth();
+        double h = getHeight();
+        if (w == 0 || h == 0) return;
+
+        gc.clearRect(0, 0, w, h); // Clear only the math layer!
+
+        drawFunction(gc, w, h); // Your existing drawFunction method
+
+        // Draw manually added user points on the graph layer
         for (Points p : pointsMap.values()) {
             double px = (p.getX() - graphCenterX) * scale + w / 2;
             double py = h / 2 - (p.getY() - graphCenterY) * scale;
-
             gc.setFill(p.getColor());
-            gc.fillOval(px - 4, py - 4, 8, 8); // Slightly larger for visibility
+            gc.fillOval(px - 4, py - 4, 8, 8);
             gc.setStroke(Color.WHITE);
             gc.setLineWidth(1);
             gc.strokeOval(px - 4, py - 4, 8, 8);
         }
+    }
 
+    // This is the MAGIC. This layer clears and draws instantly without touching math.
+    private void drawOverlayLayer() {
+        GraphicsContext gc = overlayCanvas.getGraphicsContext2D();
+        double w = getWidth();
+        double h = getHeight();
+        if (w == 0 || h == 0) return;
+
+        gc.clearRect(0, 0, w, h); // Erase the old hover states
 
         // Draw pinned points
         for (Point2D p : selectedPoints) {
             drawPointMarker(gc, p, Color.web("#FEFEFA"));
         }
 
-        // Draw neon indicators for special points (subtle guides)
+        // Draw neon indicators for special points
         for (Point2D ip : intersectionPoints) {
             drawSmallIndicator(gc, ip, Color.web("#444444"));
         }
@@ -380,7 +432,7 @@ public class GraphPlotter extends Canvas {
             drawSmallIndicator(gc, ip, Color.web("#666666"));
         }
 
-        // Coordinate label: Only visible when actively clicking/holding on a curve
+        // Coordinate label for hover
         if (isMouseDown && isHovering && hoverPoint != null) {
             drawPointMarker(gc, hoverPoint, hoverColor);
         }
@@ -390,7 +442,6 @@ public class GraphPlotter extends Canvas {
         double px = (p.getX() - graphCenterX) * scale + getWidth() / 2;
         double py = getHeight() / 2 - (p.getY() - graphCenterY) * scale;
 
-        // Main Point
         gc.setFill(color);
         gc.fillOval(px - 5, py - 5, 10, 10);
         gc.setStroke(Color.WHITE);
@@ -400,27 +451,22 @@ public class GraphPlotter extends Canvas {
         String label = "(" + formatNumber(p.getX()) + ", " + formatNumber(p.getY()) + ")";
         gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 13));
 
-        // Calculate box dimensions
-        double textWidth = label.length() * 8.0; // Estimate for Monospace font
+        double textWidth = label.length() * 8.0;
         double textHeight = 15;
         double padding = 8;
 
-        // Position the box (relative to your px + 20, py + 20)
         double boxX = px + 20 - (textWidth / 2) - (padding / 2);
         double boxY = py + 20 - (textHeight / 2) - (padding / 2);
 
-        // Draw Background Box
-        gc.setFill(Color.web("#1e1e1e", 0.9)); // Matching your UI background with slight transparency
-        gc.setStroke(color); // Neon border matching the point color
+        gc.setFill(Color.web("#1e1e1e", 0.9));
+        gc.setStroke(color);
         gc.setLineWidth(1.5);
         gc.fillRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
-        //gc.strokeRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
 
-        // Draw Text
         gc.setFill(Color.WHITE);
         gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
         gc.setTextBaseline(javafx.geometry.VPos.CENTER);
-        gc.fillText(label, px + 20, py + 20 + 2); // Small vertical adjustment for baseline
+        gc.fillText(label, px + 20, py + 20 + 2);
     }
 
     private void drawSmallIndicator(GraphicsContext gc, Point2D p, Color color) {
@@ -489,10 +535,12 @@ public class GraphPlotter extends Canvas {
     }
 
     private void drawFunction(GraphicsContext gc, double w, double h) {
-        for (EquationData equation : currentEquations.values()) {
-            if (equation == null) continue;
+        for (Map.Entry<String, EquationData> entry : currentEquations.entrySet()) {
+            String id = entry.getKey();
+            EquationData equation = entry.getValue();
+
             if (equation.parser.isImplicit()) {
-                drawFunction_Implicit(gc, w, h, equation.parser, equation);
+                drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
             } else {
                 drawFunction_Explicit(gc, w, h, equation);
             }
@@ -522,43 +570,277 @@ public class GraphPlotter extends Canvas {
         gc.stroke();
     }
 
-    private void drawFunction_Implicit(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data) {
-        int width = (int) w, height = (int) h;
-        int[] buffer = new int[width * height];
-        ThreadLocal<EquationParser> threadParser = ThreadLocal.withInitial(mainParser::cloneForThread);
-        int tileSize = 32;
-        int numTilesX = (int) Math.ceil(w / tileSize), numTilesY = (int) Math.ceil(h / tileSize);
-        IntStream.range(0, numTilesX * numTilesY).parallel().forEach(i -> {
-            int tileX = (i % numTilesX) * tileSize, tileY = (i / numTilesX) * tileSize;
-            recursivePlot(buffer, tileX, tileY, tileSize, width, height, graphCenterX, graphCenterY, scale, threadParser.get(), data.r, data.g, data.b, 0);
+    private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data, String id) {
+        // --- 1. CHECK CACHE FOR INSTANT PANNING ---
+        if (implicitCache.containsKey(id)) {
+            CachedImplicit cache = implicitCache.get(id);
+
+            gc.setStroke(data.color);
+            gc.setLineWidth(2.5);
+
+            for (double[] line : cache.lines) {
+                double px1 = (line[0] - graphCenterX) * scale + w / 2.0;
+                double py1 = h / 2.0 - (line[1] - graphCenterY) * scale;
+                double px2 = (line[2] - graphCenterX) * scale + w / 2.0;
+                double py2 = h / 2.0 - (line[3] - graphCenterY) * scale;
+
+                if ((px1 > -100 && px1 < w + 100 && py1 > -100 && py1 < h + 100) ||
+                        (px2 > -100 && px2 < w + 100 && py2 > -100 && py2 < h + 100)) {
+                    gc.strokeLine(px1, py1, px2, py2);
+                }
+            }
+
+            boolean scaleChanged = cache.scale != scale;
+            boolean pannedOutOfBounds = Math.abs(graphCenterX - cache.cx) > (w / scale) * 0.1 ||
+                    Math.abs(graphCenterY - cache.cy) > (h / scale) * 0.1;
+
+            if (!scaleChanged && !pannedOutOfBounds) return;
+            if (isInteracting) return;
+        }
+
+        // --- 2. CANCEL OLD TASKS ---
+        if (activeTasks.containsKey(id)) {
+            activeTasks.get(id).cancel(true);
+        }
+
+        final double viewCx = graphCenterX;
+        final double viewCy = graphCenterY;
+        final double viewScale = scale;
+
+        // --- 3. FAST PROGRESSIVE RENDER (PREVIEW) ---
+        int coarseStep = 20;
+        int coarseCols = (int) w / coarseStep + 1;
+        int coarseRows = (int) h / coarseStep + 1;
+        double[][] coarseVals = new double[coarseCols][coarseRows];
+
+        // Since AST is completely thread-safe, we no longer need ThreadLocal clones!
+        IntStream.range(0, coarseCols * coarseRows).parallel().forEach(i -> {
+            int c = i % coarseCols;
+            int r = i / coarseCols;
+            double gx = viewCx + (c * coarseStep - w / 2.0) / viewScale;
+            double gy = viewCy + (h / 2.0 - r * coarseStep) / viewScale;
+            coarseVals[c][r] = mainParser.evaluateImplicit(gx, gy);
         });
-        WritableImage img = new WritableImage(width, height);
-        img.getPixelWriter().setPixels(0, 0, width, height, javafx.scene.image.PixelFormat.getIntArgbInstance(), buffer, 0, width);
-        gc.drawImage(img, 0, 0);
+
+        gc.setStroke(data.color.deriveColor(0, 1, 1, 0.4));
+        gc.setLineWidth(4.0);
+
+        for (int r = 0; r < coarseRows - 1; r++) {
+            for (int c = 0; c < coarseCols - 1; c++) {
+                double vtl = coarseVals[c][r], vtr = coarseVals[c + 1][r];
+                double vbl = coarseVals[c][r + 1], vbr = coarseVals[c + 1][r + 1];
+
+                int state = 0;
+                if (vtl > 0) state |= 8;
+                if (vtr > 0) state |= 4;
+                if (vbr > 0) state |= 2;
+                if (vbl > 0) state |= 1;
+
+                if (state == 0 || state == 15) continue;
+
+                double topX = c * coarseStep + coarseStep * interp(vtl, vtr);
+                double topY = r * coarseStep;
+                double botX = c * coarseStep + coarseStep * interp(vbl, vbr);
+                double botY = (r + 1) * coarseStep;
+                double leftX = c * coarseStep;
+                double leftY = r * coarseStep + coarseStep * interp(vtl, vbl);
+                double rightX = (c + 1) * coarseStep;
+                double rightY = r * coarseStep + coarseStep * interp(vtr, vbr);
+
+                switch (state) {
+                    case 1:
+                    case 14:
+                        gc.strokeLine(leftX, leftY, botX, botY);
+                        break;
+                    case 2:
+                    case 13:
+                        gc.strokeLine(botX, botY, rightX, rightY);
+                        break;
+                    case 4:
+                    case 11:
+                        gc.strokeLine(topX, topY, rightX, rightY);
+                        break;
+                    case 8:
+                    case 7:
+                        gc.strokeLine(leftX, leftY, topX, topY);
+                        break;
+                    case 3:
+                    case 12:
+                        gc.strokeLine(leftX, leftY, rightX, rightY);
+                        break;
+                    case 6:
+                    case 9:
+                        gc.strokeLine(topX, topY, botX, botY);
+                        break;
+                    case 5:
+                        gc.strokeLine(leftX, leftY, topX, topY);
+                        gc.strokeLine(botX, botY, rightX, rightY);
+                        break;
+                    case 10:
+                        gc.strokeLine(topX, topY, rightX, rightY);
+                        gc.strokeLine(leftX, leftY, botX, botY);
+                        break;
+                }
+            }
+        }
+
+        // --- 4. HIGH-RES ADAPTIVE BACKGROUND CALCULATION ---
+        final double fineStep = 1.5 / viewScale; // 1.5-pixel HD resolution (Fixed jagged edges)
+        final double coarseStepMath = 15.0 / viewScale;
+        final double areaMultiplier = 1.2;
+        final double viewWidthMath = w / viewScale;
+        final double viewHeightMath = h / viewScale;
+
+        final double startX = viewCx - (viewWidthMath * areaMultiplier) / 2.0;
+        final double startY = viewCy + (viewHeightMath * areaMultiplier) / 2.0;
+
+        final int mathCoarseCols = (int) ((viewWidthMath * areaMultiplier) / coarseStepMath) + 1;
+        final int mathCoarseRows = (int) ((viewHeightMath * areaMultiplier) / coarseStepMath) + 1;
+
+        javafx.concurrent.Task<List<double[]>> task = new javafx.concurrent.Task<>() {
+            @Override
+            protected List<double[]> call() {
+                double[][] mathCoarseVals = new double[mathCoarseCols][mathCoarseRows];
+
+                // 4A. Evaluate coarse grid
+                IntStream.range(0, mathCoarseCols * mathCoarseRows).parallel().forEach(i -> {
+                    if (isCancelled()) return;
+                    int c = i % mathCoarseCols;
+                    int r = i / mathCoarseCols;
+                    double gx = startX + c * coarseStepMath;
+                    double gy = startY - r * coarseStepMath;
+                    mathCoarseVals[c][r] = mainParser.evaluateImplicit(gx, gy);
+                });
+
+                if (isCancelled()) return null;
+
+                // Use synchronized list because we are parallelizing the line construction
+                List<double[]> lines = Collections.synchronizedList(new ArrayList<>());
+                int subdivisions = 10; // 15 / 1.5 = 10 cells per coarse box
+
+                // 4B. FULLY PARALLELIZED High-Res Refinement
+                IntStream.range(0, (mathCoarseRows - 1) * (mathCoarseCols - 1)).parallel().forEach(i -> {
+                    if (isCancelled()) return;
+                    int c = i % (mathCoarseCols - 1);
+                    int r = i / (mathCoarseCols - 1);
+
+                    double vtl = mathCoarseVals[c][r], vtr = mathCoarseVals[c + 1][r];
+                    double vbl = mathCoarseVals[c][r + 1], vbr = mathCoarseVals[c + 1][r + 1];
+
+                    int state = 0;
+                    if (vtl > 0) state |= 8;
+                    if (vtr > 0) state |= 4;
+                    if (vbr > 0) state |= 2;
+                    if (vbl > 0) state |= 1;
+
+                    if (state == 0 || state == 15) return; // Skip empty boxes
+
+                    double boxStartX = startX + c * coarseStepMath;
+                    double boxStartY = startY - r * coarseStepMath;
+
+                    double[][] fineVals = new double[subdivisions + 1][subdivisions + 1];
+                    fineVals[0][0] = vtl;
+                    fineVals[subdivisions][0] = vtr;
+                    fineVals[0][subdivisions] = vbl;
+                    fineVals[subdivisions][subdivisions] = vbr;
+
+                    for (int fr = 0; fr <= subdivisions; fr++) {
+                        for (int fc = 0; fc <= subdivisions; fc++) {
+                            if ((fr == 0 && fc == 0) || (fr == 0 && fc == subdivisions) ||
+                                    (fr == subdivisions && fc == 0) || (fr == subdivisions && fc == subdivisions)) {
+                                continue;
+                            }
+                            double fx = boxStartX + fc * fineStep;
+                            double fy = boxStartY - fr * fineStep;
+                            fineVals[fc][fr] = mainParser.evaluateImplicit(fx, fy);
+                        }
+                    }
+
+                    List<double[]> localLines = new ArrayList<>();
+                    for (int fr = 0; fr < subdivisions; fr++) {
+                        for (int fc = 0; fc < subdivisions; fc++) {
+                            double fvtl = fineVals[fc][fr], fvtr = fineVals[fc + 1][fr];
+                            double fvbl = fineVals[fc][fr + 1], fvbr = fineVals[fc + 1][fr + 1];
+
+                            int fstate = 0;
+                            if (fvtl > 0) fstate |= 8;
+                            if (fvtr > 0) fstate |= 4;
+                            if (fvbr > 0) fstate |= 2;
+                            if (fvbl > 0) fstate |= 1;
+
+                            if (fstate == 0 || fstate == 15) continue;
+
+                            double ftopX = boxStartX + (fc + interp(fvtl, fvtr)) * fineStep;
+                            double ftopY = boxStartY - fr * fineStep;
+                            double fbotX = boxStartX + (fc + interp(fvbl, fvbr)) * fineStep;
+                            double fbotY = boxStartY - (fr + 1) * fineStep;
+                            double fleftX = boxStartX + fc * fineStep;
+                            double fleftY = boxStartY - (fr + interp(fvtl, fvbl)) * fineStep;
+                            double frightX = boxStartX + (fc + 1) * fineStep;
+                            double frightY = boxStartY - (fr + interp(fvtr, fvbr)) * fineStep;
+
+                            switch (fstate) {
+                                case 1:
+                                case 14:
+                                    localLines.add(new double[]{fleftX, fleftY, fbotX, fbotY});
+                                    break;
+                                case 2:
+                                case 13:
+                                    localLines.add(new double[]{fbotX, fbotY, frightX, frightY});
+                                    break;
+                                case 4:
+                                case 11:
+                                    localLines.add(new double[]{ftopX, ftopY, frightX, frightY});
+                                    break;
+                                case 8:
+                                case 7:
+                                    localLines.add(new double[]{fleftX, fleftY, ftopX, ftopY});
+                                    break;
+                                case 3:
+                                case 12:
+                                    localLines.add(new double[]{fleftX, fleftY, frightX, frightY});
+                                    break;
+                                case 6:
+                                case 9:
+                                    localLines.add(new double[]{ftopX, ftopY, fbotX, fbotY});
+                                    break;
+                                case 5:
+                                    localLines.add(new double[]{fleftX, fleftY, ftopX, ftopY});
+                                    localLines.add(new double[]{fbotX, fbotY, frightX, frightY});
+                                    break;
+                                case 10:
+                                    localLines.add(new double[]{ftopX, ftopY, frightX, frightY});
+                                    localLines.add(new double[]{fleftX, fleftY, fbotX, fbotY});
+                                    break;
+                            }
+                        }
+                    }
+                    lines.addAll(localLines);
+                });
+
+                return lines;
+            }
+        };
+
+        task.setOnSucceeded(e -> {
+            List<double[]> result = task.getValue();
+            if (result == null) return;
+            implicitCache.put(id, new CachedImplicit(result, viewScale, viewCx, viewCy));
+            activeTasks.remove(id);
+            drawGraphLayer();
+        });
+
+        activeTasks.put(id, task);
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
     }
 
-    private void recursivePlot(int[] buffer, int x, int y, int size, int w, int h, double cx, double cy, double sc, EquationParser parser, int r, int g, int b, int depth) {
-        if (depth > 20 || x >= w || y >= h || x + size < 0 || y + size < 0) return;
-        int minSize = isInteracting ? 4 : 1;
-        if (size <= minSize) {
-            double gx = cx + (x + size / 2.0 - w / 2.0) / sc;
-            double gy = cy + (h / 2.0 - (y + size / 2.0)) / sc;
-            double val = parser.evaluateImplicit(gx, gy);
-            if (!Double.isNaN(val) && Math.abs(val) < 15.0 * size / sc) {
-                int argb = (255 << 24) | (r << 16) | (g << 8) | b;
-                for (int dy = 0; dy < size; dy++)
-                    for (int dx = 0; dx < size; dx++) {
-                        int px = x + dx, py = y + dy;
-                        if (px >= 0 && px < w && py >= 0 && py < h) buffer[py * w + px] = argb;
-                    }
-            }
-            return;
-        }
-        int half = size / 2;
-        recursivePlot(buffer, x, y, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
-        recursivePlot(buffer, x + half, y, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
-        recursivePlot(buffer, x, y + half, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
-        recursivePlot(buffer, x + half, y + half, half, w, h, cx, cy, sc, parser, r, g, b, depth + 1);
+    private double interp(double v1, double v2) {
+        if (Double.isNaN(v1) || Double.isNaN(v2)) return 0.5;
+        double sum = Math.abs(v1) + Math.abs(v2);
+        if (sum == 0.0) return 0.5;
+        return Math.abs(v1) / sum;
     }
 
     public void addEquationToHashmap(String id, String fullInput, Color color) {
@@ -567,6 +849,15 @@ public class GraphPlotter extends Canvas {
         data.parser = new EquationParser(fullInput);
         data.setColor(color);
         pointsMap.remove(id);
+
+        // --- FIX: CLEAR THE CACHE WHEN EQUATION CHANGES ---
+        implicitCache.remove(id);
+        if (activeTasks.containsKey(id)) {
+            activeTasks.get(id).cancel(true);
+            activeTasks.remove(id);
+        }
+        // --------------------------------------------------
+
         if (data.parser.getPoints() != null) {
             Points p = data.parser.getPoints();
             pointsMap.put(id, new Points(p.getX(), p.getY(), color));
@@ -580,6 +871,7 @@ public class GraphPlotter extends Canvas {
     public void removeEquation(String id) {
         currentEquations.remove(id);
         refreshAllData();
+        implicitCache.remove(id); // Clear cache if equation is removed
         pointsMap.remove(id);
         draw();
     }
@@ -613,11 +905,24 @@ public class GraphPlotter extends Canvas {
     public void clearAllEquations() {
         currentEquations.clear();
         pointsMap.clear();
+        implicitCache.clear();
         draw();
     }
 
     public EquationData getEquation(String id) {
         return currentEquations.get(id);
     }
-
 }
+
+//class CachedImplicit {
+//    List<double[]> lines;
+//    double scale;
+//    double cx, cy;
+//
+//    public CachedImplicit(List<double[]> lines, double scale, double cx, double cy) {
+//        this.lines = lines;
+//        this.scale = scale;
+//        this.cx = cx;
+//        this.cy = cy;
+//    }
+//}

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://unpkg.com/mathlive"></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+          rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+
+        body {
+            margin: 0;
+            background-color: #333333; /* Matches your glass-input background */
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            height: 100vh;
+        }
+
+        math-field {
+            font-size: 25px;
+            width: 100%;
+            font-family: "JetBrains Mono SemiBold", sans-serif;
+            background: transparent;
+            color: #ffffff;
+            border: none;
+            padding-left: 10px;
+        }
+
+        math-field:focus-within {
+            outline: none;
+        }
+
+        /* Hide unnecessary web UI */
+        math-field::part(virtual-keyboard-toggle) {
+            display: none;
+        }
+
+        math-field::part(menu-toggle) {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<math-field id="mf"></math-field>
+
+<script>
+    const mf = document.getElementById('mf');
+
+    // Listen for typing
+    mf.addEventListener('input', (ev) => {
+        if (window.javaConnector) {
+            // Send standard math text (like x^(2) instead of LaTeX) back to Java
+            window.javaConnector.updateMath(mf.getValue('ascii-math'));
+        }
+    });
+
+    // Function allowing Java to set text when loading a file
+    function setMath(mathString) {
+        mf.setValue(mathString, {format: 'ascii-math'});
+    }
+</script>
+</body>
+</html>
