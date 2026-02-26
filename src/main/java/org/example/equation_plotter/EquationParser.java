@@ -1,9 +1,15 @@
 package org.example.equation_plotter;
 
-import java.util.*;
-import java.util.regex.*;
+import javafx.scene.paint.Color;
 import org.mariuszgromada.math.mxparser.Argument;
 import org.mariuszgromada.math.mxparser.Expression;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class EquationParser {
     private Expression mathExpr;
@@ -14,21 +20,22 @@ public class EquationParser {
     private boolean hasLimit = false;
     private final String rawInput;
     private boolean isLinearInY = false; // Flag for explicit-able implicit equations
-    private Map<Character, Argument> parameters = new HashMap<>();
+    private final Map<Character, Argument> parameters = new HashMap<>();
+    private Points points;
 
     private void detectParameters(String expr) {
 
         Pattern p = Pattern.compile("[a-zA-Z]");
         Matcher m = p.matcher(expr);
 
-        while(m.find()){
+        while (m.find()) {
             char c = m.group().charAt(0);
 
-            if(c=='x' || c=='y' || c=='e') continue; // ignore built-ins
+            if (c == 'x' || c == 'y' || c == 'e') continue; // ignore built-ins
 
-            if(!parameters.containsKey(c)){
+            if (!parameters.containsKey(c)) {
                 Argument arg = new Argument(String.valueOf(c), 1); // default = 1
-                parameters.put(c,arg);
+                parameters.put(c, arg);
             }
         }
     }
@@ -37,6 +44,16 @@ public class EquationParser {
         this.rawInput = fullInput;
         this.xArg = new Argument("x", 0);
         this.yArg = new Argument("y", 0);
+
+        // FIX 1: Use Regex for point parsing to avoid conflicts with function brackets like sin(x)
+        Pattern pointPattern = Pattern.compile("^\\s*\\((-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\)\\s*$");
+        Matcher pointMatcher = pointPattern.matcher(fullInput);
+        if (pointMatcher.matches()) {
+            double x = Double.parseDouble(pointMatcher.group(1));
+            double y = Double.parseDouble(pointMatcher.group(2));
+            this.points = new Points(x, y, Color.WHITE);
+            return;
+        }
 
         String mathPart = fullInput;
         String limitPart = "";
@@ -60,26 +77,27 @@ public class EquationParser {
         }
 
         detectParameters(mathPart);
-        List<Argument> args = new ArrayList<>();
-        args.add(xArg);
-        args.add(yArg);
-        args.addAll(parameters.values());
+        List<Argument> argsList = new ArrayList<>();
+        argsList.add(xArg);
+        argsList.add(yArg);
+        argsList.addAll(parameters.values());
+        Argument[] argsArray = argsList.toArray(new Argument[0]);
 
-        this.mathExpr = new Expression(mathPart, args.toArray(new Argument[0]));
+        this.mathExpr = new Expression(mathPart, argsArray);
 
+        // FIX 2: Correctly initialize limitExpr with the limit string and full argument list
         if (hasLimit) {
-            List<Argument> argslimit = new ArrayList<>();
-            args.add(xArg);
-            args.add(yArg);
-            args.addAll(parameters.values());
-
-            this.limitExpr = new Expression(mathPart, argslimit.toArray(new Argument[0]));
+            this.limitExpr = new Expression(limitPart, argsArray);
         }
 
-        // Automatic conversion: If implicit but linear in y, treat as explicit to avoid lag
         if (isImplicit) {
             checkLinearity();
         }
+    }
+
+    // FIX 3: Getter for points so GraphPlotter can retrieve them
+    public Points getPoints() {
+        return points;
     }
 
     private void checkLinearity() {
@@ -182,7 +200,7 @@ public class EquationParser {
         return isImplicit;
     }
 
-    public Map<Character, Argument> getParameters(){
+    public Map<Character, Argument> getParameters() {
         return parameters;
     }
 }

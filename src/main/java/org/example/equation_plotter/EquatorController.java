@@ -61,8 +61,8 @@ public class EquatorController {
         graphPlotter = new GraphPlotter(graph_container.getPrefWidth(), graph_container.getPrefHeight());
         graphPlotter.widthProperty().bind(graph_container.widthProperty());
         graphPlotter.heightProperty().bind(graph_container.heightProperty());
-
         graph_container.getChildren().addFirst(graphPlotter);
+        graph_container.setStyle("-fx-background-color: transparent;");
         graphPlotter.toBack();
     }
 
@@ -204,7 +204,8 @@ public class EquatorController {
                         graphPlotter.refreshEquationData(id);
                         graphPlotter.draw();
                     }
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             });
 
             // Update slider max when user presses Enter in max field
@@ -216,7 +217,8 @@ public class EquatorController {
                         graphPlotter.refreshEquationData(id);
                         graphPlotter.draw();
                     }
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             });
 
             // Update parameter value and label while sliding (per equation)

@@ -17,6 +17,10 @@
     -fx-padding: 15;
 }
 
+#graph_container {
+    -fx-background-color: transparent !important;
+}
+
 .sidebar-title {
     -fx-font-weight: bold;
     -fx-font-size: 15px;

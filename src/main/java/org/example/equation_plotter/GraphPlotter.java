@@ -59,6 +59,30 @@ class EquationData {
     }
 }
 
+class Points {
+    private final double x;
+    private final double y;
+    private final Color color;
+
+    public Points(double x, double y, Color color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+    }
+
+    public double getX() {
+        return x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public Color getColor() {
+        return color;
+    }
+}
+
 public class GraphPlotter extends Canvas {
     private double graphCenterX = 0;
     private double graphCenterY = 0;
@@ -72,7 +96,7 @@ public class GraphPlotter extends Canvas {
 
     private boolean isInteracting = false;
     private final Map<String, EquationData> currentEquations = new HashMap<>();
-
+    private final Map<String, Points> pointsMap = new HashMap<>();
     // Interaction States
     private boolean isMouseDown = false;
     private boolean isHovering = false;
@@ -234,7 +258,7 @@ public class GraphPlotter extends Canvas {
         updateIntercepts();
     }
 
-    public void refreshEquationData(String id){
+    public void refreshEquationData(String id) {
         double graphMinX = graphCenterX - (getWidth() / 2) / scale;
         double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
 
@@ -246,7 +270,6 @@ public class GraphPlotter extends Canvas {
         updateIntersections();
         updateIntercepts();
     }
-
 
 
     private void updateIntersections() {
@@ -331,9 +354,22 @@ public class GraphPlotter extends Canvas {
         drawGrid(gc, w, h);
         drawFunction(gc, w, h);
 
+        // Draw manually added points
+        for (Points p : pointsMap.values()) {
+            double px = (p.getX() - graphCenterX) * scale + w / 2;
+            double py = h / 2 - (p.getY() - graphCenterY) * scale;
+
+            gc.setFill(p.getColor());
+            gc.fillOval(px - 4, py - 4, 8, 8); // Slightly larger for visibility
+            gc.setStroke(Color.WHITE);
+            gc.setLineWidth(1);
+            gc.strokeOval(px - 4, py - 4, 8, 8);
+        }
+
+
         // Draw pinned points
         for (Point2D p : selectedPoints) {
-            drawPointMarker(gc, p, Color.web("#FEFEFA"), true);
+            drawPointMarker(gc, p, Color.web("#FEFEFA"));
         }
 
         // Draw neon indicators for special points (subtle guides)
@@ -346,11 +382,11 @@ public class GraphPlotter extends Canvas {
 
         // Coordinate label: Only visible when actively clicking/holding on a curve
         if (isMouseDown && isHovering && hoverPoint != null) {
-            drawPointMarker(gc, hoverPoint, hoverColor, true);
+            drawPointMarker(gc, hoverPoint, hoverColor);
         }
     }
 
-    private void drawPointMarker(GraphicsContext gc, Point2D p, Color color, boolean showLabel) {
+    private void drawPointMarker(GraphicsContext gc, Point2D p, Color color) {
         double px = (p.getX() - graphCenterX) * scale + getWidth() / 2;
         double py = getHeight() / 2 - (p.getY() - graphCenterY) * scale;
 
@@ -361,32 +397,30 @@ public class GraphPlotter extends Canvas {
         gc.setLineWidth(1);
         gc.strokeOval(px - 5, py - 5, 10, 10);
 
-        if (showLabel) {
-            String label = "(" + formatNumber(p.getX()) + ", " + formatNumber(p.getY()) + ")";
-            gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 13));
+        String label = "(" + formatNumber(p.getX()) + ", " + formatNumber(p.getY()) + ")";
+        gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 13));
 
-            // Calculate box dimensions
-            double textWidth = label.length() * 8.0; // Estimate for Monospace font
-            double textHeight = 15;
-            double padding = 8;
+        // Calculate box dimensions
+        double textWidth = label.length() * 8.0; // Estimate for Monospace font
+        double textHeight = 15;
+        double padding = 8;
 
-            // Position the box (relative to your px + 20, py + 20)
-            double boxX = px + 20 - (textWidth / 2) - (padding / 2);
-            double boxY = py + 20 - (textHeight / 2) - (padding / 2);
+        // Position the box (relative to your px + 20, py + 20)
+        double boxX = px + 20 - (textWidth / 2) - (padding / 2);
+        double boxY = py + 20 - (textHeight / 2) - (padding / 2);
 
-            // Draw Background Box
-            gc.setFill(Color.web("#1e1e1e", 0.9)); // Matching your UI background with slight transparency
-            gc.setStroke(color); // Neon border matching the point color
-            gc.setLineWidth(1.5);
-            gc.fillRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
-            //gc.strokeRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
+        // Draw Background Box
+        gc.setFill(Color.web("#1e1e1e", 0.9)); // Matching your UI background with slight transparency
+        gc.setStroke(color); // Neon border matching the point color
+        gc.setLineWidth(1.5);
+        gc.fillRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
+        //gc.strokeRoundRect(boxX, boxY, textWidth + padding, textHeight + padding, 5, 5);
 
-            // Draw Text
-            gc.setFill(Color.WHITE);
-            gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-            gc.setTextBaseline(javafx.geometry.VPos.CENTER);
-            gc.fillText(label, px + 20, py + 20 + 2); // Small vertical adjustment for baseline
-        }
+        // Draw Text
+        gc.setFill(Color.WHITE);
+        gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+        gc.setTextBaseline(javafx.geometry.VPos.CENTER);
+        gc.fillText(label, px + 20, py + 20 + 2); // Small vertical adjustment for baseline
     }
 
     private void drawSmallIndicator(GraphicsContext gc, Point2D p, Color color) {
@@ -532,14 +566,21 @@ public class GraphPlotter extends Canvas {
         data.raw = fullInput;
         data.parser = new EquationParser(fullInput);
         data.setColor(color);
-        currentEquations.put(id, data);
-        refreshAllData();
+        pointsMap.remove(id);
+        if (data.parser.getPoints() != null) {
+            Points p = data.parser.getPoints();
+            pointsMap.put(id, new Points(p.getX(), p.getY(), color));
+        } else {
+            currentEquations.put(id, data);
+            refreshAllData();
+        }
         draw();
     }
 
     public void removeEquation(String id) {
         currentEquations.remove(id);
         refreshAllData();
+        pointsMap.remove(id);
         draw();
     }
 
@@ -571,10 +612,12 @@ public class GraphPlotter extends Canvas {
 
     public void clearAllEquations() {
         currentEquations.clear();
+        pointsMap.clear();
         draw();
     }
 
     public EquationData getEquation(String id) {
         return currentEquations.get(id);
     }
+
 }
