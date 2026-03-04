@@ -12,7 +12,6 @@ import javafx.util.Duration;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
-import java.util.stream.IntStream;
 
 //class EquationData {
 //    String raw;
@@ -133,8 +132,14 @@ public class GraphPlotter extends StackPane {
         getChildren().addAll(gridCanvas, graphCanvas, overlayCanvas);
 
 
-        widthProperty().addListener(e -> draw());
-        heightProperty().addListener(e -> draw());
+        widthProperty().addListener(e -> {
+            refreshAllData();
+            draw();
+        });
+        heightProperty().addListener(e -> {
+            refreshAllData();
+            draw();
+        });
 
         setOnMousePressed(e -> {
             if (e.getButton() == MouseButton.PRIMARY) {
@@ -271,12 +276,15 @@ public class GraphPlotter extends StackPane {
     }
 
     public void refreshAllData() {
-        double graphMinX = graphCenterX - (getWidth() / 2) / scale;
-        double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+        double w = getWidth();
+        if (w <= 0) return; // Don't build a cache for a 0-width window
+
+        double graphMinX = graphCenterX - (w / 2) / scale;
+        double graphMaxX = graphCenterX + (w / 2) / scale;
 
         for (EquationData equation : currentEquations.values()) {
-            if (!equation.parser.isImplicit()) {
-                equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+            if (equation.parser != null && !equation.parser.isImplicit()) {
+                equation.buildCacheExplicit(graphMinX, graphMaxX, w);
             }
         }
         updateIntersections();
@@ -552,29 +560,44 @@ public class GraphPlotter extends StackPane {
         gc.setStroke(data.color);
         gc.setLineWidth(2.5);
         boolean firstPoint = true;
+        double prevPixelY = 0;
+
         for (double pixelX = 0; pixelX < w; pixelX += 1.0) {
             double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
             double graphY = data.getY(graphX);
+
             if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
                 firstPoint = true;
                 continue;
             }
+
             double pixelY = h / 2.0 - (graphY - graphCenterY) * scale;
+
             if (firstPoint) {
                 gc.moveTo(pixelX, pixelY);
                 firstPoint = false;
             } else {
-                gc.lineTo(pixelX, pixelY);
+                // ASYMPTOTE DETECTION:
+                // If the line jumps vertically by more than the entire height of the screen
+                // in a single pixel step, it is an asymptote. Do not connect them.
+                if (Math.abs(pixelY - prevPixelY) > h) {
+                    gc.stroke();       // Draw the curve up to this point
+                    gc.beginPath();    // Start a fresh line
+                    gc.moveTo(pixelX, pixelY); // Move the brush without drawing
+                } else {
+                    gc.lineTo(pixelX, pixelY);
+                }
             }
+
+            prevPixelY = pixelY; // Save the current Y for the next loop
         }
         gc.stroke();
     }
 
     private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data, String id) {
-        // --- 1. CHECK CACHE FOR INSTANT PANNING ---
+        // 1. CACHE CHECK FOR PERFORMANCE
         if (implicitCache.containsKey(id)) {
             CachedImplicit cache = implicitCache.get(id);
-
             gc.setStroke(data.color);
             gc.setLineWidth(2.5);
 
@@ -589,16 +612,10 @@ public class GraphPlotter extends StackPane {
                     gc.strokeLine(px1, py1, px2, py2);
                 }
             }
-
-            boolean scaleChanged = cache.scale != scale;
-            boolean pannedOutOfBounds = Math.abs(graphCenterX - cache.cx) > (w / scale) * 0.1 ||
-                    Math.abs(graphCenterY - cache.cy) > (h / scale) * 0.1;
-
-            if (!scaleChanged && !pannedOutOfBounds) return;
-            if (isInteracting) return;
+            if (cache.scale == scale && !isInteracting) return;
         }
 
-        // --- 2. CANCEL OLD TASKS ---
+        // 2. TASK MANAGEMENT
         if (activeTasks.containsKey(id)) {
             activeTasks.get(id).cancel(true);
         }
@@ -607,14 +624,13 @@ public class GraphPlotter extends StackPane {
         final double viewCy = graphCenterY;
         final double viewScale = scale;
 
-        // --- 3. FAST PROGRESSIVE RENDER (PREVIEW) ---
-        int coarseStep = 20;
+        // 3. FAST PREVIEW PASS (coarseStep reduced to 10 for better initial detection)
+        int coarseStep = 10;
         int coarseCols = (int) w / coarseStep + 1;
         int coarseRows = (int) h / coarseStep + 1;
         double[][] coarseVals = new double[coarseCols][coarseRows];
 
-        // Since AST is completely thread-safe, we no longer need ThreadLocal clones!
-        IntStream.range(0, coarseCols * coarseRows).parallel().forEach(i -> {
+        java.util.stream.IntStream.range(0, coarseCols * coarseRows).parallel().forEach(i -> {
             int c = i % coarseCols;
             int r = i / coarseCols;
             double gx = viewCx + (c * coarseStep - w / 2.0) / viewScale;
@@ -623,217 +639,107 @@ public class GraphPlotter extends StackPane {
         });
 
         gc.setStroke(data.color.deriveColor(0, 1, 1, 0.4));
-        gc.setLineWidth(4.0);
+        gc.setLineWidth(3.5);
 
         for (int r = 0; r < coarseRows - 1; r++) {
             for (int c = 0; c < coarseCols - 1; c++) {
-                double vtl = coarseVals[c][r], vtr = coarseVals[c + 1][r];
-                double vbl = coarseVals[c][r + 1], vbr = coarseVals[c + 1][r + 1];
-
-                int state = 0;
-                if (vtl > 0) state |= 8;
-                if (vtr > 0) state |= 4;
-                if (vbr > 0) state |= 2;
-                if (vbl > 0) state |= 1;
-
+                double vtl = coarseVals[c][r], vtr = coarseVals[c + 1][r], vbl = coarseVals[c][r + 1], vbr = coarseVals[c + 1][r + 1];
+                int state = (vtl > 0 ? 8 : 0) | (vtr > 0 ? 4 : 0) | (vbr > 0 ? 2 : 0) | (vbl > 0 ? 1 : 0);
                 if (state == 0 || state == 15) continue;
 
-                double topX = c * coarseStep + coarseStep * interp(vtl, vtr);
-                double topY = r * coarseStep;
-                double botX = c * coarseStep + coarseStep * interp(vbl, vbr);
-                double botY = (r + 1) * coarseStep;
-                double leftX = c * coarseStep;
-                double leftY = r * coarseStep + coarseStep * interp(vtl, vbl);
-                double rightX = (c + 1) * coarseStep;
-                double rightY = r * coarseStep + coarseStep * interp(vtr, vbr);
+                double tX = c * coarseStep + coarseStep * interp(vtl, vtr), tY = r * coarseStep;
+                double bX = c * coarseStep + coarseStep * interp(vbl, vbr), bY = (r + 1) * coarseStep;
+                double lX = c * coarseStep, lY = r * coarseStep + coarseStep * interp(vtl, vbl);
+                double rX = (c + 1) * coarseStep, rY = r * coarseStep + coarseStep * interp(vtr, vbr);
 
-                switch (state) {
-                    case 1:
-                    case 14:
-                        gc.strokeLine(leftX, leftY, botX, botY);
-                        break;
-                    case 2:
-                    case 13:
-                        gc.strokeLine(botX, botY, rightX, rightY);
-                        break;
-                    case 4:
-                    case 11:
-                        gc.strokeLine(topX, topY, rightX, rightY);
-                        break;
-                    case 8:
-                    case 7:
-                        gc.strokeLine(leftX, leftY, topX, topY);
-                        break;
-                    case 3:
-                    case 12:
-                        gc.strokeLine(leftX, leftY, rightX, rightY);
-                        break;
-                    case 6:
-                    case 9:
-                        gc.strokeLine(topX, topY, botX, botY);
-                        break;
-                    case 5:
-                        gc.strokeLine(leftX, leftY, topX, topY);
-                        gc.strokeLine(botX, botY, rightX, rightY);
-                        break;
-                    case 10:
-                        gc.strokeLine(topX, topY, rightX, rightY);
-                        gc.strokeLine(leftX, leftY, botX, botY);
-                        break;
+                if (state == 1 || state == 14) gc.strokeLine(lX, lY, bX, bY);
+                else if (state == 2 || state == 13) gc.strokeLine(bX, bY, rX, rY);
+                else if (state == 4 || state == 11) gc.strokeLine(tX, tY, rX, rY);
+                else if (state == 8 || state == 7) gc.strokeLine(lX, lY, tX, tY);
+                else if (state == 3 || state == 12) gc.strokeLine(lX, lY, rX, rY);
+                else if (state == 6 || state == 9) gc.strokeLine(tX, tY, bX, bY);
+                else if (state == 5) {
+                    gc.strokeLine(lX, lY, tX, tY);
+                    gc.strokeLine(bX, bY, rX, rY);
+                } else if (state == 10) {
+                    gc.strokeLine(tX, tY, rX, rY);
+                    gc.strokeLine(lX, lY, bX, bY);
                 }
             }
         }
 
-        // --- 4. HIGH-RES ADAPTIVE BACKGROUND CALCULATION ---
-        final double fineStep = 1.5 / viewScale; // 1.5-pixel HD resolution (Fixed jagged edges)
-        final double coarseStepMath = 15.0 / viewScale;
-        final double areaMultiplier = 1.2;
-        final double viewWidthMath = w / viewScale;
-        final double viewHeightMath = h / viewScale;
-
-        final double startX = viewCx - (viewWidthMath * areaMultiplier) / 2.0;
-        final double startY = viewCy + (viewHeightMath * areaMultiplier) / 2.0;
-
-        final int mathCoarseCols = (int) ((viewWidthMath * areaMultiplier) / coarseStepMath) + 1;
-        final int mathCoarseRows = (int) ((viewHeightMath * areaMultiplier) / coarseStepMath) + 1;
+        // 4. HIGH-RES CALCULATION TASK
+        final double fineStep = 1.0 / viewScale;
+        final double coarseStepMath = 10.0 / viewScale;
+        final double areaMultiplier = 1.4;
+        final double startX = viewCx - (w / viewScale * areaMultiplier) / 2.0;
+        final double startY = viewCy + (h / viewScale * areaMultiplier) / 2.0;
+        final int mCols = (int) ((w / viewScale * areaMultiplier) / coarseStepMath) + 1;
+        final int mRows = (int) ((h / viewScale * areaMultiplier) / coarseStepMath) + 1;
 
         javafx.concurrent.Task<List<double[]>> task = new javafx.concurrent.Task<>() {
             @Override
             protected List<double[]> call() {
-                double[][] mathCoarseVals = new double[mathCoarseCols][mathCoarseRows];
+                List<double[]> lines = java.util.Collections.synchronizedList(new ArrayList<>());
+                int sub = 10;
 
-                // 4A. Evaluate coarse grid
-                IntStream.range(0, mathCoarseCols * mathCoarseRows).parallel().forEach(i -> {
+                java.util.stream.IntStream.range(0, (mRows - 1) * (mCols - 1)).parallel().forEach(i -> {
                     if (isCancelled()) return;
-                    int c = i % mathCoarseCols;
-                    int r = i / mathCoarseCols;
-                    double gx = startX + c * coarseStepMath;
-                    double gy = startY - r * coarseStepMath;
-                    mathCoarseVals[c][r] = mainParser.evaluateImplicit(gx, gy);
-                });
+                    int c = i % (mCols - 1), r = i / (mCols - 1);
+                    double bx = startX + c * coarseStepMath, by = startY - r * coarseStepMath;
 
-                if (isCancelled()) return null;
+                    for (int fr = 0; fr < sub; fr++) {
+                        for (int fc = 0; fc < sub; fc++) {
+                            double x = bx + fc * fineStep;
+                            double y = by - fr * fineStep;
 
-                // Use synchronized list because we are parallelizing the line construction
-                List<double[]> lines = Collections.synchronizedList(new ArrayList<>());
-                int subdivisions = 10; // 15 / 1.5 = 10 cells per coarse box
+                            // Evaluate the 4 corners of a 1-pixel cell
+                            double vtl = mainParser.evaluateImplicit(x, y);
+                            double vtr = mainParser.evaluateImplicit(x + fineStep, y);
+                            double vbl = mainParser.evaluateImplicit(x, y - fineStep);
+                            double vbr = mainParser.evaluateImplicit(x + fineStep, y - fineStep);
 
-                // 4B. FULLY PARALLELIZED High-Res Refinement
-                IntStream.range(0, (mathCoarseRows - 1) * (mathCoarseCols - 1)).parallel().forEach(i -> {
-                    if (isCancelled()) return;
-                    int c = i % (mathCoarseCols - 1);
-                    int r = i / (mathCoarseCols - 1);
+                            // Determine the Marching Squares state (0-15)
+                            int s = (vtl > 0 ? 8 : 0) | (vtr > 0 ? 4 : 0) | (vbr > 0 ? 2 : 0) | (vbl > 0 ? 1 : 0);
+                            if (s == 0 || s == 15) continue; // No curve in this pixel
 
-                    double vtl = mathCoarseVals[c][r], vtr = mathCoarseVals[c + 1][r];
-                    double vbl = mathCoarseVals[c][r + 1], vbr = mathCoarseVals[c + 1][r + 1];
+                            // Use the interp helper to find exact edge crossings
+                            double ftX = x + fineStep * interp(vtl, vtr);
+                            double fbX = x + fineStep * interp(vbl, vbr);
+                            double flY = y - fineStep * interp(vtl, vbl);
+                            double frY = y - fineStep * interp(vtr, vbr);
 
-                    int state = 0;
-                    if (vtl > 0) state |= 8;
-                    if (vtr > 0) state |= 4;
-                    if (vbr > 0) state |= 2;
-                    if (vbl > 0) state |= 1;
-
-                    if (state == 0 || state == 15) return; // Skip empty boxes
-
-                    double boxStartX = startX + c * coarseStepMath;
-                    double boxStartY = startY - r * coarseStepMath;
-
-                    double[][] fineVals = new double[subdivisions + 1][subdivisions + 1];
-                    fineVals[0][0] = vtl;
-                    fineVals[subdivisions][0] = vtr;
-                    fineVals[0][subdivisions] = vbl;
-                    fineVals[subdivisions][subdivisions] = vbr;
-
-                    for (int fr = 0; fr <= subdivisions; fr++) {
-                        for (int fc = 0; fc <= subdivisions; fc++) {
-                            if ((fr == 0 && fc == 0) || (fr == 0 && fc == subdivisions) ||
-                                    (fr == subdivisions && fc == 0) || (fr == subdivisions && fc == subdivisions)) {
-                                continue;
-                            }
-                            double fx = boxStartX + fc * fineStep;
-                            double fy = boxStartY - fr * fineStep;
-                            fineVals[fc][fr] = mainParser.evaluateImplicit(fx, fy);
-                        }
-                    }
-
-                    List<double[]> localLines = new ArrayList<>();
-                    for (int fr = 0; fr < subdivisions; fr++) {
-                        for (int fc = 0; fc < subdivisions; fc++) {
-                            double fvtl = fineVals[fc][fr], fvtr = fineVals[fc + 1][fr];
-                            double fvbl = fineVals[fc][fr + 1], fvbr = fineVals[fc + 1][fr + 1];
-
-                            int fstate = 0;
-                            if (fvtl > 0) fstate |= 8;
-                            if (fvtr > 0) fstate |= 4;
-                            if (fvbr > 0) fstate |= 2;
-                            if (fvbl > 0) fstate |= 1;
-
-                            if (fstate == 0 || fstate == 15) continue;
-
-                            double ftopX = boxStartX + (fc + interp(fvtl, fvtr)) * fineStep;
-                            double ftopY = boxStartY - fr * fineStep;
-                            double fbotX = boxStartX + (fc + interp(fvbl, fvbr)) * fineStep;
-                            double fbotY = boxStartY - (fr + 1) * fineStep;
-                            double fleftX = boxStartX + fc * fineStep;
-                            double fleftY = boxStartY - (fr + interp(fvtl, fvbl)) * fineStep;
-                            double frightX = boxStartX + (fc + 1) * fineStep;
-                            double frightY = boxStartY - (fr + interp(fvtr, fvbr)) * fineStep;
-
-                            switch (fstate) {
-                                case 1:
-                                case 14:
-                                    localLines.add(new double[]{fleftX, fleftY, fbotX, fbotY});
-                                    break;
-                                case 2:
-                                case 13:
-                                    localLines.add(new double[]{fbotX, fbotY, frightX, frightY});
-                                    break;
-                                case 4:
-                                case 11:
-                                    localLines.add(new double[]{ftopX, ftopY, frightX, frightY});
-                                    break;
-                                case 8:
-                                case 7:
-                                    localLines.add(new double[]{fleftX, fleftY, ftopX, ftopY});
-                                    break;
-                                case 3:
-                                case 12:
-                                    localLines.add(new double[]{fleftX, fleftY, frightX, frightY});
-                                    break;
-                                case 6:
-                                case 9:
-                                    localLines.add(new double[]{ftopX, ftopY, fbotX, fbotY});
-                                    break;
-                                case 5:
-                                    localLines.add(new double[]{fleftX, fleftY, ftopX, ftopY});
-                                    localLines.add(new double[]{fbotX, fbotY, frightX, frightY});
-                                    break;
-                                case 10:
-                                    localLines.add(new double[]{ftopX, ftopY, frightX, frightY});
-                                    localLines.add(new double[]{fleftX, fleftY, fbotX, fbotY});
-                                    break;
+                            // Add the calculated line segments to the cache
+                            if (s == 1 || s == 14) lines.add(new double[]{x, flY, fbX, y - fineStep});
+                            else if (s == 2 || s == 13) lines.add(new double[]{fbX, y - fineStep, x + fineStep, frY});
+                            else if (s == 4 || s == 11) lines.add(new double[]{ftX, y, x + fineStep, frY});
+                            else if (s == 8 || s == 7) lines.add(new double[]{x, flY, ftX, y});
+                            else if (s == 3 || s == 12) lines.add(new double[]{x, flY, x + fineStep, frY});
+                            else if (s == 6 || s == 9) lines.add(new double[]{ftX, y, fbX, y - fineStep});
+                            else if (s == 5) {
+                                lines.add(new double[]{x, flY, ftX, y});
+                                lines.add(new double[]{fbX, y - fineStep, x + fineStep, frY});
+                            } else if (s == 10) {
+                                lines.add(new double[]{ftX, y, x + fineStep, frY});
+                                lines.add(new double[]{x, flY, fbX, y - fineStep});
                             }
                         }
                     }
-                    lines.addAll(localLines);
                 });
-
                 return lines;
             }
         };
 
         task.setOnSucceeded(e -> {
-            List<double[]> result = task.getValue();
-            if (result == null) return;
-            implicitCache.put(id, new CachedImplicit(result, viewScale, viewCx, viewCy));
+            implicitCache.put(id, new CachedImplicit(task.getValue(), viewScale, viewCx, viewCy));
             activeTasks.remove(id);
             drawGraphLayer();
         });
 
         activeTasks.put(id, task);
-        Thread thread = new Thread(task);
-        thread.setDaemon(true);
-        thread.start();
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 
     private double interp(double v1, double v2) {

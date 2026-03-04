@@ -41,9 +41,10 @@ public class EquationParser {
                 hasLimit = true;
             }
 
-            if (mathPart.contains("=") && !mathPart.toLowerCase().startsWith("y=") && !mathPart.toLowerCase().startsWith("f(x)=")) {
+            if (mathPart.contains("=")) {
                 String[] parts = mathPart.split("=");
                 if (parts.length == 2) {
+                    // Rearranges everything to one side: (left) - (right) = 0
                     mathPart = "(" + parts[0] + ") - (" + parts[1] + ")";
                 }
                 isImplicit = true;
@@ -71,20 +72,30 @@ public class EquationParser {
 
     private Points points;
 
+    // Inside EquationParser.java
     private void detectParameters(String expr) {
-        // Erase all known math functions and multi-letter constants
-        // This prevents the letters in "arcsin" or "floor" from becoming sliders
-        String cleanedExpr = expr.toLowerCase()
-                .replaceAll("arcsin|arccos|arctan|asin|acos|atan|sinh|cosh|tanh|sin|cos|tan|sqrt|cbrt|abs|log|ln|exp|floor|ceil|round|sign|signum|pi", "");
+        parameters.clear(); // Ensure old sliders are removed
+
+        // Strip function names longest-first to prevent partial matches.
+        // e.g. "arcsec" must be removed before "arc" or "sec" can match inside it.
+        String cleanedExpr = expr.toLowerCase();
+        String[] funcs = {
+                "arcsec", "arccsc", "arccot", "arcsin", "arccos", "arctan",
+                "signum", "asec", "acsc", "acot", "asin", "acos", "atan",
+                "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round",
+                "ceil", "sign", "sec", "csc", "cot", "sin", "cos", "tan",
+                "abs", "log", "exp", "ln", "pi"
+        };
+        for (String fn : funcs) {
+            cleanedExpr = cleanedExpr.replace(fn, "");
+        }
 
         Pattern p = Pattern.compile("[a-z]");
         Matcher m = p.matcher(cleanedExpr);
         while (m.find()) {
             char c = m.group().charAt(0);
             if (c == 'x' || c == 'y' || c == 'e') continue;
-            if (!parameters.containsKey(c)) {
-                parameters.put(c, new Parameter());
-            }
+            parameters.put(c, new Parameter());
         }
     }
 
@@ -278,7 +289,15 @@ public class EquationParser {
                     Node a = x, b = parseFactor();
                     x = (X, Y) -> a.eval(X, Y) / b.eval(X, Y);
                 } else {
-                    return x;
+                    // Implicit multiplication support
+                    // If the next char is a digit, letter, or '(', it's a factor
+                    // We do NOT include '+' or '-' here to avoid conflict with addition/subtraction
+                    if (ch == '(' || (ch >= '0' && ch <= '9') || ch == '.' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+                        Node a = x, b = parseFactor();
+                        x = (X, Y) -> a.eval(X, Y) * b.eval(X, Y);
+                    } else {
+                        return x;
+                    }
                 }
             }
         }
@@ -301,108 +320,19 @@ public class EquationParser {
                 xNode = (X, Y) -> val;
             } else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
                 while ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) nextChar();
-                String name = str.substring(startPos, this.pos).toLowerCase();
+                String rawName = str.substring(startPos, this.pos).toLowerCase();
+
+                // 1. Clean up MathLive UI artifacts (\left and \right)
+                String name = rawName.replace("left", "").replace("right", "");
 
                 if (eat('(')) {
                     Node a = parseExpression();
                     eat(')');
-                    // --- FULL STANDARD SCIENTIFIC LIBRARY SUPPORT ---
-                    switch (name) {
-                        case "sin":
-                            xNode = (X, Y) -> Math.sin(a.eval(X, Y));
-                            break;
-                        case "cos":
-                            xNode = (X, Y) -> Math.cos(a.eval(X, Y));
-                            break;
-                        case "tan":
-                            xNode = (X, Y) -> Math.tan(a.eval(X, Y));
-                            break;
-
-                        // Supports both 'asin' and 'arcsin' naming conventions
-                        case "asin":
-                        case "arcsin":
-                            xNode = (X, Y) -> Math.asin(a.eval(X, Y));
-                            break;
-                        case "acos":
-                        case "arccos":
-                            xNode = (X, Y) -> Math.acos(a.eval(X, Y));
-                            break;
-                        case "atan":
-                        case "arctan":
-                            xNode = (X, Y) -> Math.atan(a.eval(X, Y));
-                            break;
-
-                        case "sinh":
-                            xNode = (X, Y) -> Math.sinh(a.eval(X, Y));
-                            break;
-                        case "cosh":
-                            xNode = (X, Y) -> Math.cosh(a.eval(X, Y));
-                            break;
-                        case "tanh":
-                            xNode = (X, Y) -> Math.tanh(a.eval(X, Y));
-                            break;
-
-                        case "sqrt":
-                            xNode = (X, Y) -> Math.sqrt(a.eval(X, Y));
-                            break;
-                        case "cbrt":
-                            xNode = (X, Y) -> Math.cbrt(a.eval(X, Y));
-                            break;
-                        case "abs":
-                            xNode = (X, Y) -> Math.abs(a.eval(X, Y));
-                            break;
-                        case "log":
-                            xNode = (X, Y) -> Math.log10(a.eval(X, Y));
-                            break;
-                        case "ln":
-                            xNode = (X, Y) -> Math.log(a.eval(X, Y));
-                            break;
-                        case "exp":
-                            xNode = (X, Y) -> Math.exp(a.eval(X, Y));
-                            break;
-
-                        case "floor":
-                            xNode = (X, Y) -> Math.floor(a.eval(X, Y));
-                            break;
-                        case "ceil":
-                            xNode = (X, Y) -> Math.ceil(a.eval(X, Y));
-                            break;
-                        case "round":
-                            xNode = (X, Y) -> Math.round(a.eval(X, Y));
-                            break;
-                        case "sign":
-                        case "signum":
-                            xNode = (X, Y) -> Math.signum(a.eval(X, Y));
-                            break;
-                        default:
-                            throw new RuntimeException("Unknown function: " + name);
-                    }
+                    // 2. Direct function match (e.g., sin(...))
+                    xNode = buildFunctionNode(name, a);
                 } else {
-                    if (name.equals("x")) xNode = (X, Y) -> X;
-                    else if (name.equals("y")) xNode = (X, Y) -> Y;
-                    else if (name.equals("pi")) xNode = (X, Y) -> Math.PI;
-                    else if (name.equals("e")) xNode = (X, Y) -> Math.E;
-                    else if (name.length() == 1 && params.containsKey(name.charAt(0))) {
-                        Parameter p = params.get(name.charAt(0));
-                        xNode = (X, Y) -> p.getArgumentValue();
-                    } else {
-                        // Support for implicit variables like 'ax' -> a * x
-                        Node chain = (X, Y) -> 1.0;
-                        for (int i = 0; i < name.length(); i++) {
-                            char c = name.charAt(i);
-                            Node part;
-                            if (c == 'x') part = (X, Y) -> X;
-                            else if (c == 'y') part = (X, Y) -> Y;
-                            else if (params.containsKey(c)) {
-                                Parameter p = params.get(c);
-                                part = (X, Y) -> p.getArgumentValue();
-                            } else part = (X, Y) -> 1.0;
-
-                            Node prev = chain;
-                            chain = (X, Y) -> prev.eval(X, Y) * part.eval(X, Y);
-                        }
-                        xNode = chain;
-                    }
+                    // 3. Handle implicit strings like "sinx", "xsiny", "pi", or standalone "sin"
+                    xNode = parseImplicitLetters(name);
                 }
             } else {
                 throw new RuntimeException("Unexpected char: " + (char) ch);
@@ -414,6 +344,113 @@ public class EquationParser {
             }
 
             return xNode;
+        }
+
+// --- HELPER METHODS ---
+
+        private Node buildFunctionNode(String name, Node a) {
+            return switch (name) {
+                case "sin" -> (X, Y) -> Math.sin(a.eval(X, Y));
+                case "cos" -> (X, Y) -> Math.cos(a.eval(X, Y));
+                case "tan" -> (X, Y) -> Math.tan(a.eval(X, Y));
+                case "sec" -> (X, Y) -> 1.0 / Math.cos(a.eval(X, Y));
+                case "csc" -> (X, Y) -> 1.0 / Math.sin(a.eval(X, Y));
+                case "cot" -> (X, Y) -> 1.0 / Math.tan(a.eval(X, Y));
+                case "asin", "arcsin" -> (X, Y) -> Math.asin(a.eval(X, Y));
+                case "acos", "arccos" -> (X, Y) -> Math.acos(a.eval(X, Y));
+                case "atan", "arctan" -> (X, Y) -> Math.atan(a.eval(X, Y));
+                case "asec", "arcsec" -> (X, Y) -> Math.acos(1.0 / a.eval(X, Y));
+                case "acsc", "arccsc" -> (X, Y) -> Math.asin(1.0 / a.eval(X, Y));
+                case "acot", "arccot" -> (X, Y) -> Math.atan(1.0 / a.eval(X, Y));
+                case "sinh" -> (X, Y) -> Math.sinh(a.eval(X, Y));
+                case "cosh" -> (X, Y) -> Math.cosh(a.eval(X, Y));
+                case "tanh" -> (X, Y) -> Math.tanh(a.eval(X, Y));
+                case "sqrt" -> (X, Y) -> Math.sqrt(a.eval(X, Y));
+                case "cbrt" -> (X, Y) -> Math.cbrt(a.eval(X, Y));
+                case "abs" -> (X, Y) -> Math.abs(a.eval(X, Y));
+                case "log" -> (X, Y) -> Math.log10(a.eval(X, Y));
+                case "ln" -> (X, Y) -> Math.log(a.eval(X, Y));
+                case "exp" -> (X, Y) -> Math.exp(a.eval(X, Y));
+                case "floor" -> (X, Y) -> Math.floor(a.eval(X, Y));
+                case "ceil" -> (X, Y) -> Math.ceil(a.eval(X, Y));
+                case "round" -> (X, Y) -> Math.round(a.eval(X, Y));
+                case "sign", "signum" -> (X, Y) -> Math.signum(a.eval(X, Y));
+                default -> throw new RuntimeException("Unknown function: " + name);
+            };
+        }
+
+        private Node parseImplicitLetters(String name) {
+            if (name.isEmpty()) return (X, Y) -> 1.0;
+
+            Node chain = null;
+            int i = 0;
+
+            // Order matters: check longest function names first
+            String[] funcs = {"asec", "arcsec", "acsc", "arccsc", "acot", "arccot", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "signum", "asin", "acos", "atan", "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round", "sign", "ceil", "sin", "cos", "tan", "abs", "log", "exp", "ln"};
+
+            while (i < name.length()) {
+                Node part = null;
+                boolean foundFunc = false;
+
+                // Check if a mathematical function is embedded in the string
+                for (String func : funcs) {
+                    if (name.startsWith(func, i)) {
+                        foundFunc = true;
+                        int nextIdx = i + func.length();
+                        Node argNode;
+
+                        if (nextIdx < name.length()) {
+                            // The argument is attached directly to the function (e.g., "x" in "sinx")
+                            argNode = parseImplicitLetters(name.substring(nextIdx));
+                            i = name.length(); // Consumed the rest of the string
+                        } else {
+                            // Function is at the very end of the string (e.g., "sin 2"). Argument is the next factor.
+                            argNode = parseFactor();
+                            i = nextIdx;
+                        }
+
+                        part = buildFunctionNode(func, argNode);
+                        break;
+                    }
+                }
+
+                // If no function was found, process constants and variables
+                if (!foundFunc) {
+                    if (name.startsWith("pi", i)) {
+                        part = (X, Y) -> Math.PI;
+                        i += 2;
+                    } else if (name.charAt(i) == 'e') {
+                        part = (X, Y) -> Math.E;
+                        i++;
+                    } else if (name.charAt(i) == 'x') {
+                        part = (X, Y) -> X;
+                        i++;
+                    } else if (name.charAt(i) == 'y') {
+                        part = (X, Y) -> Y;
+                        i++;
+                    } else {
+                        final char c = name.charAt(i);
+                        if (params != null && params.containsKey(c)) {
+                            Parameter p = params.get(c);
+                            part = (X, Y) -> p.getArgumentValue();
+                        } else {
+                            part = (X, Y) -> 1.0; // Fallback for unknown variables
+                        }
+                        i++;
+                    }
+                }
+
+                // Chain components together via multiplication
+                if (chain == null) {
+                    chain = part;
+                } else {
+                    Node prev = chain;
+                    Node curr = part;
+                    chain = (X, Y) -> prev.eval(X, Y) * curr.eval(X, Y);
+                }
+            }
+
+            return chain == null ? ((X, Y) -> 1.0) : chain;
         }
     }
 }

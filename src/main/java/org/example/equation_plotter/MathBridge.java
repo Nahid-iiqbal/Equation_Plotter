@@ -21,29 +21,44 @@ public class MathBridge {
     }
 
     // 2. MUST BE PUBLIC
-    public void updateMath(String asciiMath) {
-        // Debugging: Watch the console to see the exact text JavaScript is sending to Java!
-        System.out.println("Received from Desmos UI: " + asciiMath);
-
+    // Inside MathBridge.java -> updateMath method
+    public void updateMath(String rawMath) {
         debounceTimer.playFromStart();
-
         debounceTimer.setOnFinished(e -> {
-            String text = asciiMath.trim();
+            String text = rawMath.trim();
             if (text.isEmpty()) {
                 plotter.removeEquation(equationId);
                 sliderBox.getChildren().clear();
             } else {
                 try {
-                    // Convert ASCII math slightly to match your AST compiler
-                    String javaMath = text.replace("⋅", "*").replace("pi", "π");
+                    // IMPROVED CLEANING LOGIC
+                    String javaMath = text.toLowerCase()
+                            .replace("\\sin", "sin")
+                            .replace("\\cos", "cos")
+                            .replace("\\tan", "tan")
+                            .replace("\\sec", "sec")
+                            .replace("\\csc", "csc")
+                            .replace("\\cot", "cot")
+                            .replace("\\operatorname", "")
+                            .replace("\\left", "(")
+                            .replace("\\right", ")")
+                            .replace("\\cdot", "*")
+                            .replace("\\frac", "")
+                            .replace("{", "(")
+                            .replace("}", ")")
+                            .replace("\\", "") // Remove remaining backslashes
+                            .replace(" ", "");
+
                     plotter.addEquationToHashmap(equationId, javaMath, cp.getValue());
+                    plotter.refreshEquationData(equationId);
+                    plotter.draw();
 
                     EquationData data = plotter.getEquation(equationId);
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
                     }
                 } catch (Exception ex) {
-                    ex.printStackTrace(); // Print errors if the compiler fails to parse it
+                    ex.printStackTrace();
                 }
             }
         });

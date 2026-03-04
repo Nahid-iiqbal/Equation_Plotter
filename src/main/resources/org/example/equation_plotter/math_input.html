@@ -1,64 +1,89 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <script src="https://unpkg.com/mathlive"></script>
-    <link href="https://fonts.googleapis.com" rel="preconnect">
-    <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
-          rel="stylesheet">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mathquill/0.10.1/mathquill.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathquill/0.10.1/mathquill.js"></script>
 
+    <style>
         body {
             margin: 0;
-            background-color: #333333; /* Matches your glass-input background */
+            background-color: #1e1e1e; /* Match your JavaFX background */
             overflow: hidden;
             display: flex;
             align-items: center;
             height: 100vh;
-        }
-
-        math-field {
-            font-size: 25px;
-            width: 100%;
-            font-family: "JetBrains Mono SemiBold", sans-serif;
-            background: transparent;
             color: #ffffff;
+            cursor: text;
+        }
+
+        #math-field {
+            font-size: 25px; /* Slightly larger */
+            width: 100%;
             border: none;
-            padding-left: 10px;
+            padding-left: 15px;
+            /* Make the text bold and beautiful */
+            font-weight: 700;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.3);
+            letter-spacing: 0.5px;
         }
 
-        math-field:focus-within {
-            outline: none;
+        /* MathQuill Overrides */
+        .mq-editable-field {
+            border: none !important;
         }
 
-        /* Hide unnecessary web UI */
-        math-field::part(virtual-keyboard-toggle) {
-            display: none;
+        .mq-focused {
+            box-shadow: none !important;
+            outline: none !important;
         }
 
-        math-field::part(menu-toggle) {
-            display: none;
+        /* Bolder, neon-style cursor */
+        .mq-cursor {
+            border-left: 2px solid #00FFFF !important; /* Cyan glow cursor */
+            box-shadow: 0 0 8px #00FFFF;
+        }
+
+        /* Make the math symbols themselves look cleaner */
+        .mq-root-block {
+            font-family: "Symbola", "Times New Roman", serif !important;
         }
     </style>
 </head>
 <body>
-<math-field id="mf"></math-field>
+<span id="math-field"></span>
 
 <script>
-    const mf = document.getElementById('mf');
+    /* global javaConnector */
+    var MQ = MathQuill.getInterface(2);
+    var mathFieldSpan = document.getElementById('math-field');
 
-    // Listen for typing
-    mf.addEventListener('input', (ev) => {
-        if (window.javaConnector) {
-            // Send standard math text (like x^(2) instead of LaTeX) back to Java
-            window.javaConnector.updateMath(mf.getValue('ascii-math'));
+    // FIX: Attach it to 'window' so Java can access it!
+    window.mathField = MQ.MathField(mathFieldSpan, {
+        spaceBehavesLikeTab: true,
+        handlers: {
+            edit: function () {
+                // Use .latex() instead of .text() to give Java a consistent format
+                var latex = window.mathField.latex();
+                if (window.javaConnector) {
+                    window.javaConnector.updateMath(latex);
+                }
+            }
         }
     });
 
-    // Function allowing Java to set text when loading a file
+    // Auto-focus the field when loaded
+    window.mathField.focus();
+
+    // Keep focus on the math field even if the user clicks the empty margins
+    document.body.addEventListener('mousedown', function () {
+        setTimeout(function () {
+            window.mathField.focus();
+        }, 10);
+    });
+
     function setMath(mathString) {
-        mf.setValue(mathString, {format: 'ascii-math'});
+        window.mathField.latex(mathString);
     }
 </script>
 </body>

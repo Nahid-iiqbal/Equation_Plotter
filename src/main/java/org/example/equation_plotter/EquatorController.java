@@ -63,7 +63,7 @@ public class EquatorController {
         graph_container.getChildren().addFirst(graphPlotter);
         graph_container.setStyle("-fx-background-color: transparent;");
         graphPlotter.toBack();
-        
+
         addEquation();
         setBtn_home();
         setBtn_zoom_in();
@@ -100,9 +100,9 @@ public class EquatorController {
     void openSidebarPressed(ActionEvent event) {
         mainBorderPane.setLeft(sideBar);
         btn_open_sidebar.setVisible(false);
-        AnchorPane.setRightAnchor(btn_home, 10.0);
-        AnchorPane.setRightAnchor(btn_zoom_in, 10.0);
-        AnchorPane.setRightAnchor(btn_zoom_out, 10.0);
+        AnchorPane.setRightAnchor(btn_home, 410.0);
+        AnchorPane.setRightAnchor(btn_zoom_in, 410.0);
+        AnchorPane.setRightAnchor(btn_zoom_out, 410.0);
     }
 
     @FXML
@@ -119,28 +119,33 @@ public class EquatorController {
 
         // Standard event filter for keys
         webView.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            String command = null;
+            String keystroke = null;
             switch (event.getCode()) {
                 case BACK_SPACE:
-                    command = "deleteBackward";
+                    keystroke = "Backspace";
                     break;
                 case LEFT:
-                    command = "moveToPreviousChar";
+                    keystroke = "Left";
                     break;
                 case RIGHT:
-                    command = "moveToNextChar";
+                    keystroke = "Right";
                     break;
                 case UP:
-                    command = "moveUp";
+                    keystroke = "Up";
                     break;
                 case DOWN:
-                    command = "moveDown";
+                    keystroke = "Down";
+                    break;
+                case DELETE:
+                    keystroke = "Del";
                     break;
                 default:
                     break;
             }
-            if (command != null) {
-                webView.getEngine().executeScript("document.getElementById('mf').executeCommand('" + command + "');");
+
+            if (keystroke != null) {
+                // Use the JS variable 'mathField' directly and call 'keystroke'
+                webView.getEngine().executeScript("window.mathField.keystroke('" + keystroke + "');");
                 event.consume();
             }
         });
@@ -149,6 +154,8 @@ public class EquatorController {
         java.net.URL htmlUrl = getClass().getResource("/org/example/equation_plotter/math_input.html");
         if (htmlUrl != null) {
             webView.getEngine().load(htmlUrl.toExternalForm());
+            //webView.getEngine().load("https://www.google.com");
+
         }
 
         Button btn_rmv = new Button();
@@ -162,7 +169,9 @@ public class EquatorController {
         colorIndex++;
         ColorPicker cp = new ColorPicker(initCol);
         cp.getStyleClass().add("dot-color-picker");
-
+        cp.setOnAction(event -> {
+            graphPlotter.updateEqColor(id, cp.getValue());
+        });
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
         topRow.getChildren().addAll(webView, btn_rmv, cp);

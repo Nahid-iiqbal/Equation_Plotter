@@ -9,7 +9,6 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
@@ -21,8 +20,15 @@ import java.util.logging.Logger;
 
 public class Equator extends Application {
     private long startTime = -1;
-    private final double DRAW_DURATION_NANOS = 3_000_000_000.0; // 3 seconds to draw
+    // Increased duration slightly to allow the chaos to build up
+    private final double DRAW_DURATION_NANOS = 5_000_000_000.0;
     private static final Logger LOGGER = Logger.getLogger(Equator.class.getName());
+    private final double sigma = 10.0;
+    private final double rho = 28.0;
+    private final double beta = 8.0 / 3.0;
+    private final double dt = 0.01; // Integration time step
+    // --- Chaos Theory: Lorenz Attractor State ---
+    private double lx = 0.1, ly = 0, lz = 0;
 
     @Override
     public void start(Stage stage) throws IOException {
@@ -38,28 +44,25 @@ public class Equator extends Application {
 
         welcomeStage.setScene(new Scene(welcomeRoot));
         welcomeStage.show();
-        //welcomeStage.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
-        String fontPath = "fonts/Megrim-Regular.ttf";
-        Font loadedFont = Font.loadFont(getClass().getResourceAsStream(fontPath), 14);
-
-        if (loadedFont == null) {
-            System.out.println("Error: Could not find font at " + fontPath);
-        } else {
-            // This prints the EXACT name you must use in your CSS
-            System.out.println("Loaded Font Family: " + loadedFont.getFamily());
-        }
+        gc.setFill(Color.BLACK);
+        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
         AnimationTimer timer = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (startTime < 0) startTime = now;
 
-                // Calculate progress (0.0 to 1.0) based on elapsed time
                 double progress = Math.min(1.0, (now - startTime) / DRAW_DURATION_NANOS);
 
-                drawSelfDrawingWave(gc, canvas.getWidth(), canvas.getHeight(), progress, now);
+                // Create a "motion blur" trail effect by not fully clearing
+                gc.setFill(Color.rgb(0, 0, 0, 0.037));
+                gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+
+                // Calculate and draw multiple steps per frame for smooth animation
+                for (int i = 0; i < 9; i++) {
+                    drawChaosStep(gc, canvas.getWidth(), canvas.getHeight(), progress);
+                }
 
                 if (progress >= 1.0) {
-                    // Stop the timer and transition once the curve is fully drawn
                     this.stop();
                     closeAndTransition(welcomeStage, stage);
                 }
@@ -68,45 +71,49 @@ public class Equator extends Application {
         timer.start();
     }
 
-    private void drawSelfDrawingWave(GraphicsContext gc, double w, double h, double progress, long now) {
-        gc.clearRect(0, 0, w, h);
-        double centerY = h / 2;
-        double currentMaxX = w * progress;
-        double timeOffset = now / 250_000_000.0;
-        // 1. Draw the actual wave line
-        gc.setStroke(Color.web("#00FFFF"));
+    private void drawChaosStep(GraphicsContext gc, double w, double h, double progress) {
+        // Calculate the next point in the attractor using Lorenz equations
+        double dx = (sigma * (ly - lx)) * dt;
+        double dy = (lx * (rho - lz) - ly) * dt;
+        double dz = (lx * ly - beta * lz) * dt;
+
+        double prevX = lx;
+        double prevZ = lz;
+
+        lx += dx;
+        ly += dy;
+        lz += dz;
+
+        // Scaling for the 500x100 canvas
+        double scaleX = 8.5;
+        double scaleZ = 1.7;
+        double centerX = w / 2;
+        double centerY = h - 5;
+
+        // Project 3D points to 2D canvas coordinates
+        double x1 = centerX + prevX * scaleX;
+        double y1 = centerY - prevZ * scaleZ;
+        double x2 = centerX + lx * scaleX;
+        double y2 = centerY - lz * scaleZ;
+
+        // Neon coloring that shifts as the workspace loads
+        double hue = (180 + progress * 120) % 360;
+        gc.setStroke(Color.hsb(hue, 1.0, 1.0, 0.9));
         gc.setLineWidth(3);
-        gc.setFill(Color.web("#00FFFF", 0.3));
-        gc.fillOval(-10, centerY - 10, 20, 20);
-        gc.setFill(Color.web("#00FFFF"));
-        gc.fillOval(-4, centerY - 4, 8, 8);
 
+        gc.strokeLine(x1, y1, x2, y2);
 
-        gc.beginPath();
-        gc.moveTo(0, centerY);
-
-        double lastY = centerY;
-        for (double x = 0; x <= currentMaxX; x++) {
-            double localAmplitude = Math.min(30, x * 0.2);
-            lastY = centerY + Math.sin(x * 0.05 - timeOffset) * localAmplitude;
-            gc.lineTo(x, lastY);
-        }
-        gc.stroke();
-
-        // 2. Add the Leading Point (The Head)
-        if (progress > 0 && progress < 1) {
-            // Draw a outer glow for the point
-            gc.setFill(Color.web("#00FFFF", 0.3)); // Transparent cyan for glow
-            gc.fillOval(currentMaxX - 8, lastY - 8, 16, 16);
-
-            // Draw the solid core of the point
-            gc.setFill(Color.web("#FFFFFF")); // White core for high-intensity look
-            gc.fillOval(currentMaxX - 4, lastY - 4, 8, 8);
+        // Leading glow point
+        if (progress < 1.0) {
+            gc.setFill(Color.web("#FFFFFF", 0.5));
+            gc.fillOval(x2 - 1.5, y2 - 1.5, 3, 3);
+            gc.setFill(Color.WHITE);
+            gc.fillOval(x2 - 1, y2 - 1, 2, 2);
         }
     }
 
     private void closeAndTransition(Stage welcomeStage, Stage mainStage) {
-        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(Duration.seconds(0.5));
+        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(Duration.seconds(0.8));
         delay.setOnFinished(e -> {
             welcomeStage.close();
             try {
