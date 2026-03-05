@@ -5,6 +5,7 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.AnchorPane;
@@ -402,5 +403,13 @@ public class EquatorController {
                 e.printStackTrace();
             }
         }
+    }
+
+    public GraphPlotter getGraphPlotter() {
+        return graphPlotter;
+    }
+
+    public Scene getScene() {
+        return mainBorderPane.getScene();
     }
 }

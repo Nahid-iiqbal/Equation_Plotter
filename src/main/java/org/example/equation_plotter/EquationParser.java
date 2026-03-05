@@ -72,29 +72,19 @@ public class EquationParser {
 
     private Points points;
 
-    // Inside EquationParser.java
     private void detectParameters(String expr) {
         parameters.clear(); // Ensure old sliders are removed
 
-        // Strip function names longest-first to prevent partial matches.
-        // e.g. "arcsec" must be removed before "arc" or "sec" can match inside it.
-        String cleanedExpr = expr.toLowerCase();
-        String[] funcs = {
-                "arcsec", "arccsc", "arccot", "arcsin", "arccos", "arctan",
-                "signum", "asec", "acsc", "acot", "asin", "acos", "atan",
-                "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round",
-                "ceil", "sign", "sec", "csc", "cot", "sin", "cos", "tan",
-                "abs", "log", "exp", "ln", "pi"
-        };
-        for (String fn : funcs) {
-            cleanedExpr = cleanedExpr.replace(fn, "");
-        }
+        // Ensure all multi-letter functions are stripped before checking for variables
+        String cleanedExpr = expr.toLowerCase()
+                .replaceAll("arc|sec|csc|cot|sin|cos|tan|sqrt|cbrt|abs|log|ln|exp|floor|ceil|round|sign|pi", "");
 
         Pattern p = Pattern.compile("[a-z]");
         Matcher m = p.matcher(cleanedExpr);
         while (m.find()) {
             char c = m.group().charAt(0);
             if (c == 'x' || c == 'y' || c == 'e') continue;
+
             parameters.put(c, new Parameter());
         }
     }
@@ -375,6 +365,13 @@ public class EquationParser {
                 case "ceil" -> (X, Y) -> Math.ceil(a.eval(X, Y));
                 case "round" -> (X, Y) -> Math.round(a.eval(X, Y));
                 case "sign", "signum" -> (X, Y) -> Math.signum(a.eval(X, Y));
+                case "power" -> {
+                    if (eat(',')) {
+                        Node b = parseExpression();
+                        yield (X, Y) -> Math.pow(a.eval(X, Y), b.eval(X, Y));
+                    }
+                    yield (X, Y) -> a.eval(X, Y);
+                }
                 default -> throw new RuntimeException("Unknown function: " + name);
             };
         }
@@ -400,13 +397,42 @@ public class EquationParser {
                         Node argNode;
 
                         if (nextIdx < name.length()) {
-                            // The argument is attached directly to the function (e.g., "x" in "sinx")
+                            // Case 1: The argument is attached directly (e.g., "x" in "sinx")
                             argNode = parseImplicitLetters(name.substring(nextIdx));
-                            i = name.length(); // Consumed the rest of the string
+                            i = name.length();
                         } else {
-                            // Function is at the very end of the string (e.g., "sin 2"). Argument is the next factor.
+                            // Case 2: Function is at the end of this letter block (e.g., "sin 2")
+                            // Instead of parseFactor(), we peek at the next factor in the expression
+                            // BUT we can't call parseFactor() here because we are inside parseImplicitLetters
+                            // which is called by parseFactor. This would be infinite recursion if not careful.
+                            // However, parseImplicitLetters is only called when we have a string of letters.
+                            // If "sin" is at the end of "xsin", the argument must be the NEXT factor in the stream.
+                            // So we return a special node that consumes the next factor? No, that's complex.
+
+                            // SIMPLIFICATION: If a function is at the end of a letter block, 
+                            // we assume the argument follows immediately in the stream.
+                            // We return a node that, when evaluated, is just the function wrapper,
+                            // but we need to consume the argument NOW.
+                            // But we can't consume from the stream here easily because we are processing a substring.
+
+                            // ACTUALLY: The logic in parseFactor calls parseImplicitLetters(name).
+                            // If 'name' ends with "sin", we are stuck.
+                            // We need to signal to parseFactor that we consumed "sin" but need an argument.
+
+                            // Let's assume for now that implicit functions inside a string must have their argument
+                            // inside the string too (e.g. "sinx").
+                            // If someone types "sin 2", 'name' will be "sin".
+                            // In that case nextIdx == name.length().
+
+                            // FIX: If we are at the end of the string, we can't parse more from the string.
+                            // We must return a node that expects an argument from the main stream?
+                            // Or we change how parseFactor works.
+
+                            // Let's try to handle "sin" at end of string by consuming from main stream.
+                            // But parseImplicitLetters is static-ish context relative to the stream?
+                            // No, it's an instance method of ASTCompiler. We can call parseFactor()!
                             argNode = parseFactor();
-                            i = nextIdx;
+                            i = name.length();
                         }
 
                         part = buildFunctionNode(func, argNode);

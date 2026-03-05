@@ -33,6 +33,7 @@ public class MathBridge {
                 try {
                     // IMPROVED CLEANING LOGIC
                     String javaMath = text.toLowerCase()
+                            .replaceAll("\\\\frac\\{([^{}]*)\\}\\{([^{}]*)\\}", "($1)/($2)")
                             .replace("\\sin", "sin")
                             .replace("\\cos", "cos")
                             .replace("\\tan", "tan")

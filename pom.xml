@@ -144,6 +144,11 @@
             <version>${lwjgl.version}</version>
             <classifier>natives-windows</classifier>
         </dependency>
+        <dependency>
+            <groupId>org.matheclipse</groupId>
+            <artifactId>matheclipse-core</artifactId>
+            <version>2.0.0</version>
+        </dependency>
     </dependencies>
 
     <build>

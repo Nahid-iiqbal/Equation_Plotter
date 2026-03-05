@@ -2,6 +2,8 @@ package org.example.equation_plotter;
 
 import javafx.scene.paint.Color;
 
+import java.util.Arrays;
+
 public class EquationData {
     String raw;
     EquationParser parser;
@@ -13,6 +15,27 @@ public class EquationData {
     private double xStart;
     private int startIndex;
     private int size;
+
+    public EquationData() {
+    }
+
+    public EquationData(EquationData data) {
+        this.raw = data.raw;
+        this.parser = data.parser;
+        this.color = data.color;
+        this.r = data.r;
+        this.g = data.g;
+        this.b = data.b;
+        this.yCache = data.yCache;
+        this.step = data.step;
+        this.xStart = data.xStart;
+        this.startIndex = data.startIndex;
+        this.size = data.size;
+        if (data.yCache != null) {
+            this.yCache = Arrays.copyOf(data.yCache, data.yCache.length);
+        }
+    }
+
 
     public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
         if (parser.isImplicit()) return;
@@ -46,5 +69,9 @@ public class EquationData {
         this.r = (int) (color.getRed() * 255);
         this.g = (int) (color.getGreen() * 255);
         this.b = (int) (color.getBlue() * 255);
+    }
+
+    public Color getColor() {
+        return color;
     }
 }

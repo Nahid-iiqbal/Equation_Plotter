@@ -13,69 +13,6 @@ import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 
-//class EquationData {
-//    String raw;
-//    EquationParser parser;
-//    Color color;
-//    int r, g, b;
-//
-//    private double[] yCache;
-//    private double step;
-//    private double xStart;
-//    private int startIndex;
-//    private int size;
-//
-//    public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
-//        if (parser.isImplicit()) return;
-//        double visibleWidth = visibleMaxX - visibleMinX;
-//        double bufferWidth = visibleWidth * 3;
-//        size = (int) (width * 3 * 2);
-//        step = bufferWidth / size;
-//        xStart = visibleMinX - visibleWidth;
-//        yCache = new double[size];
-//
-//        // Use all CPU cores to calculate standard functions instantly
-//        java.util.stream.IntStream.range(0, size).parallel().forEach(i -> {
-//            double x = xStart + i * step;
-//            yCache[i] = parser.evaluateExplicit(x);
-//        });
-//
-//        startIndex = 0;
-//    }
-//
-//    public double getY(double graphX) {
-//        double fIndex = (graphX - xStart) / step;
-//        int i0 = (int) Math.floor(fIndex);
-//        int i1 = i0 + 1;
-//        if (i0 < 0 || i1 >= size) return Double.NaN;
-//        double y0 = yCache[(startIndex + i0) % size];
-//        double y1 = yCache[(startIndex + i1) % size];
-//        double t = fIndex - i0;
-//        return y0 + t * (y1 - y0);
-//    }
-//
-//    public void setColor(Color color) {
-//        this.color = color;
-//        this.r = (int) (color.getRed() * 255);
-//        this.g = (int) (color.getGreen() * 255);
-//        this.b = (int) (color.getBlue() * 255);
-//    }
-//}
-//
-//record Points(double x, double y, Color color) {
-//    public double getX() {
-//        return x;
-//    }
-//
-//    public double getY() {
-//        return y;
-//    }
-//
-//    public Paint getColor() {
-//        return color;
-//    }
-//}
-
 public class GraphPlotter extends StackPane {
     // Grabs the exact number of logical threads your CPU possesses
     private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
@@ -93,7 +30,7 @@ public class GraphPlotter extends StackPane {
     private final PauseTransition scrollEndTimer = new PauseTransition(Duration.millis(120));
 
     private boolean isInteracting = false;
-    private final Map<String, EquationData> currentEquations = new HashMap<>();
+    private static final Map<String, EquationData> currentEquations = new HashMap<>();
     private final Map<String, Points> pointsMap = new HashMap<>();
     // Interaction States
     private boolean isMouseDown = false;
@@ -484,7 +421,29 @@ public class GraphPlotter extends StackPane {
         gc.fillOval(px - 3, py - 3, 6, 6);
     }
 
-    private void drawGrid(GraphicsContext gc, double w, double h) {
+    // Inside GraphPlotter.java
+    public static Map<String, EquationData> getCurrentEquations() {
+        return currentEquations;
+    }
+
+    private String formatNumber(double d) {
+        return new DecimalFormat("#.##").format(d);
+    }
+
+    private void drawFunction(GraphicsContext gc, double w, double h) {
+        for (Map.Entry<String, EquationData> entry : currentEquations.entrySet()) {
+            String id = entry.getKey();
+            EquationData equation = entry.getValue();
+
+            if (equation.parser.isImplicit()) {
+                drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
+            } else {
+                drawFunction_Explicit(gc, w, h, equation);
+            }
+        }
+    }
+
+    public void drawGrid(GraphicsContext gc, double w, double h) {
         double left = graphCenterX - w / 2 / scale;
         double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
         double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
@@ -536,62 +495,6 @@ public class GraphPlotter extends StackPane {
         gc.strokeLine(yAxisPixel, 0, yAxisPixel, h);
         gc.strokeLine(0, xAxisPixel, w, xAxisPixel);
         gc.fillText("0", yAxisPixel - 10, xAxisPixel + 15);
-    }
-
-    private String formatNumber(double d) {
-        return new DecimalFormat("#.##").format(d);
-    }
-
-    private void drawFunction(GraphicsContext gc, double w, double h) {
-        for (Map.Entry<String, EquationData> entry : currentEquations.entrySet()) {
-            String id = entry.getKey();
-            EquationData equation = entry.getValue();
-
-            if (equation.parser.isImplicit()) {
-                drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
-            } else {
-                drawFunction_Explicit(gc, w, h, equation);
-            }
-        }
-    }
-
-    private void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationData data) {
-        gc.beginPath();
-        gc.setStroke(data.color);
-        gc.setLineWidth(2.5);
-        boolean firstPoint = true;
-        double prevPixelY = 0;
-
-        for (double pixelX = 0; pixelX < w; pixelX += 1.0) {
-            double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
-            double graphY = data.getY(graphX);
-
-            if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
-                firstPoint = true;
-                continue;
-            }
-
-            double pixelY = h / 2.0 - (graphY - graphCenterY) * scale;
-
-            if (firstPoint) {
-                gc.moveTo(pixelX, pixelY);
-                firstPoint = false;
-            } else {
-                // ASYMPTOTE DETECTION:
-                // If the line jumps vertically by more than the entire height of the screen
-                // in a single pixel step, it is an asymptote. Do not connect them.
-                if (Math.abs(pixelY - prevPixelY) > h) {
-                    gc.stroke();       // Draw the curve up to this point
-                    gc.beginPath();    // Start a fresh line
-                    gc.moveTo(pixelX, pixelY); // Move the brush without drawing
-                } else {
-                    gc.lineTo(pixelX, pixelY);
-                }
-            }
-
-            prevPixelY = pixelY; // Save the current Y for the next loop
-        }
-        gc.stroke();
     }
 
     private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data, String id) {
@@ -815,9 +718,53 @@ public class GraphPlotter extends StackPane {
         draw();
     }
 
+    public void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationData data) {
+        gc.beginPath();
+        gc.setStroke(data.color);
+        gc.setLineWidth(2.5);
+        boolean firstPoint = true;
+        double prevPixelY = 0;
+
+        for (double pixelX = 0; pixelX < w; pixelX += 1.0) {
+            double graphX = graphCenterX + (pixelX - w / 2.0) / scale;
+            double graphY = data.getY(graphX);
+
+            if (Double.isNaN(graphY) || Double.isInfinite(graphY)) {
+                firstPoint = true;
+                continue;
+            }
+
+            double pixelY = h / 2.0 - (graphY - graphCenterY) * scale;
+
+            if (firstPoint) {
+                gc.moveTo(pixelX, pixelY);
+                firstPoint = false;
+            } else {
+                // ASYMPTOTE DETECTION:
+                // If the line jumps vertically by more than the entire height of the screen
+                // in a single pixel step, it is an asymptote. Do not connect them.
+                if (Math.abs(pixelY - prevPixelY) > h) {
+                    gc.stroke();       // Draw the curve up to this point
+                    gc.beginPath();    // Start a fresh line
+                    gc.moveTo(pixelX, pixelY); // Move the brush without drawing
+                } else {
+                    gc.lineTo(pixelX, pixelY);
+                }
+            }
+
+            prevPixelY = pixelY; // Save the current Y for the next loop
+        }
+        gc.stroke();
+    }
+
     public EquationData getEquation(String id) {
         return currentEquations.get(id);
     }
+
+    public Canvas getGraphCanvas() {
+        return graphCanvas;
+    }
+
 }
 
 //class CachedImplicit {

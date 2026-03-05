@@ -243,3 +243,66 @@
 
     -fx-effect: dropshadow(gaussian, #00FFFF, 5, 0.4, 0, 0);
 }
+
+.selector-pane {
+    -fx-background-color: #0d0d0d;
+    -fx-border-color: #00FFFF;
+    -fx-border-width: 2px;
+    -fx-padding: 30px;
+}
+
+/* Style for the text elements */
+.selector-label {
+    -fx-font-family: 'JetBrains Mono';
+    -fx-font-size: 24px;
+    -fx-text-fill: #BFCBD9;
+    -fx-font-weight: bold;
+}
+
+.selector-combo {
+    -fx-font-family: 'JetBrains Mono';
+    -fx-font-size: 15px;
+    -fx-base: #1e1e1e;
+    -fx-text-fill: #000000;
+}
+
+.selector-button {
+    -fx-font-family: 'JetBrains Mono';
+    -fx-font-size: 16px;
+    -fx-background-color: #00FFFF;
+    -fx-text-fill: #1e1e1e;
+    -fx-font-weight: bold;
+}
+
+/* Custom styling for the About Alert */
+.about-dialog {
+    -fx-background-color: #1e1e1e;
+    -fx-border-color: #00FFFF;
+    -fx-border-width: 2px;
+    -fx-pref-width: 800px;
+    -fx-pref-height: 600px;
+}
+
+.about-dialog .label {
+    -fx-font-family: 'JetBrains Mono';
+    -fx-text-fill: #00FFFF;
+    -fx-font-size: 18px;
+}
+
+.about-dialog .header-panel {
+    -fx-background-color: #0d0d0d;
+}
+
+.about-dialog .header-panel .label {
+    -fx-font-family: 'Megrim'; /* Using your logo font for the header */
+    -fx-font-size: 30px;
+    -fx-text-fill: #ed2d63; /* Neon Pink for the title */
+}
+
+.about-dialog .button {
+    -fx-background-color: #00FFFF;
+    -fx-text-fill: #1e1e1e;
+    -fx-font-family: 'JetBrains Mono';
+    -fx-font-weight: bold;
+    -fx-cursor: hand;
+}
