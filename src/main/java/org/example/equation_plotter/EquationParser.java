@@ -11,9 +11,11 @@ public class EquationParser {
 
     private final Map<Character, Parameter> parameters = new HashMap<>();
     private Node mathExpr;
+    private Node polarExpr;
     private Node limitExpr;
     private boolean isLinearInY = false;
     private boolean isImplicit = false;
+    private boolean isPolar = false;
     private boolean hasLimit = false;
     private final String rawInput;
     private boolean isValid = true;
@@ -31,7 +33,7 @@ public class EquationParser {
                 return;
             }
 
-            String mathPart = fullInput;
+            String mathPart = fullInput.toLowerCase();
             String limitPart = "";
 
             if (fullInput.contains("{")) {
@@ -41,7 +43,19 @@ public class EquationParser {
                 hasLimit = true;
             }
 
-            if (mathPart.contains("=")) {
+            String lower = mathPart.toLowerCase().trim();
+            if (lower.matches("^r\\s*=.*")) {
+                isPolar = true;
+                isImplicit = false;
+                // extract right-hand side after r=
+                String rhs = mathPart.substring(mathPart.indexOf('=') + 1).trim();
+                // normalize theta tokens so parser sees x as the variable (theta -> x)
+                rhs = rhs.replace("θ", "theta").replace("theta", "x");
+                // Also replace standalone 't' with 'x' (word boundary)
+//                rhs = rhs.replaceAll("\\t\\b", "x");
+                mathPart = rhs;
+            }
+            else if (mathPart.contains("=")) {
                 String[] parts = mathPart.split("=");
                 if (parts.length == 2) {
                     // Rearranges everything to one side: (left) - (right) = 0
@@ -83,7 +97,7 @@ public class EquationParser {
         Matcher m = p.matcher(cleanedExpr);
         while (m.find()) {
             char c = m.group().charAt(0);
-            if (c == 'x' || c == 'y' || c == 'e') continue;
+            if (c == 'x' || c == 'y' || c == 'e' || c == 'r' || c == 't') continue;
 
             parameters.put(c, new Parameter());
         }
@@ -144,6 +158,18 @@ public class EquationParser {
         }
     }
 
+    public double evaluatePolar(double theta) {
+        if (!isValid || !isPolar || mathExpr == null) return Double.NaN;
+        try {
+            // treat parser x as theta
+            double r = mathExpr.eval(theta, 0);
+            // Note: for polar domain restrictions we will use EquationData.thetaMin/max (UI-driven)
+            return r;
+        } catch (Exception e) {
+            return Double.NaN;
+        }
+    }
+
     public boolean isValid() {
         return isValid;
     }
@@ -159,9 +185,20 @@ public class EquationParser {
                 .replace("and", " && ");
     }
 
+    private String convertPolar(String expr) {
+        if(expr.contains("r") || expr.contains("t")){
+            expr = expr.replaceAll("\\br\\b", "");
+            expr = expr.replaceAll("\\btheta\\b", "x");
+            expr = expr.replaceAll("\\bθ\\b", "x");
+        }
+        return expr;
+    }
+
     public boolean isImplicit() {
         return isImplicit;
     }
+
+    public boolean isPolar(){ return isPolar; }
 
     // --- NATIVE AST INTERFACES ---
     @FunctionalInterface

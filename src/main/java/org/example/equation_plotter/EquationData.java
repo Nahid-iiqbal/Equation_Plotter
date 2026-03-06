@@ -16,6 +16,15 @@ public class EquationData {
     private int startIndex;
     private int size;
 
+    // new flags for polar
+    public boolean isPolar = false;
+    public double thetaMin = 0;
+    public double thetaMax = 2 * Math.PI;
+
+    // caches for polar
+    public double[] CacheX;
+    public double[] CacheY;
+
     public EquationData() {
     }
 
@@ -50,6 +59,33 @@ public class EquationData {
             yCache[i] = parser.evaluateExplicit(x);
         }
         startIndex = 0;
+    }
+
+    public void buildCachePolar(double thetaMin, double thetaMax, double width) {
+        if (!isPolar || parser == null) return;
+
+        // number of samples: base on pixel width * factor for smoothness
+        int samples = Math.max(200, (int)(width * 1.5));
+        CacheX = new double[samples+1];
+        CacheY = new double[samples+1];
+        double step = (thetaMax - thetaMin) / samples;
+
+        for (int i = 0; i <= samples; i++) {
+            double t = thetaMin + i * step;
+            double r = parser.evaluatePolar(t);
+            if (Double.isNaN(r) || Double.isInfinite(r)) {
+                CacheX[i] = Double.NaN;
+                CacheY[i] = Double.NaN;
+            } else {
+                CacheX[i] = r * Math.cos(t);
+                CacheY[i] = r * Math.sin(t);
+            }
+        }
+    }
+
+    public void setThetaRange(double min, double max) {
+        thetaMin = min;
+        thetaMax = max;
     }
 
     public double getY(double graphX) {

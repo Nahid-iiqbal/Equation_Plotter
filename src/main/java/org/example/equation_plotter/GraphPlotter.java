@@ -220,8 +220,13 @@ public class GraphPlotter extends StackPane {
         double graphMaxX = graphCenterX + (w / 2) / scale;
 
         for (EquationData equation : currentEquations.values()) {
-            if (equation.parser != null && !equation.parser.isImplicit()) {
-                equation.buildCacheExplicit(graphMinX, graphMaxX, w);
+            if (equation.parser != null) {
+                if (equation.isPolar){
+                    equation.buildCachePolar(equation.thetaMin, equation.thetaMax, w);
+                }
+                else if (!equation.parser.isImplicit()) {
+                    equation.buildCacheExplicit(graphMinX, graphMaxX, w);
+                }
             }
         }
         updateIntersections();
@@ -437,7 +442,11 @@ public class GraphPlotter extends StackPane {
 
             if (equation.parser.isImplicit()) {
                 drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
-            } else {
+            }
+            else if (equation.isPolar || equation.parser.isPolar()) {
+                drawFunction_Polar(gc, w, h, equation);
+            }
+            else {
                 drawFunction_Explicit(gc, w, h, equation);
             }
         }
@@ -677,6 +686,28 @@ public class GraphPlotter extends StackPane {
         draw();
     }
 
+    // new overload:
+    public void addEquationToHashmap(String id, String fullInput, Color color, boolean isPolar) {
+        EquationData data = new EquationData();
+        data.raw = fullInput;
+        data.parser = new EquationParser(fullInput);
+        data.setColor(color);
+        data.isPolar = isPolar;             // new field in EquationData
+        // default theta range:
+        data.thetaMin = 0;
+        data.thetaMax = 2 * Math.PI;
+        // clear caches & active tasks (existing code)
+        implicitCache.remove(id);
+        if (activeTasks.containsKey(id)) {
+            activeTasks.get(id).cancel(true);
+            activeTasks.remove(id);
+        }
+
+        currentEquations.put(id, data);
+        refreshAllData();
+        draw();
+    }
+
     public void removeEquation(String id) {
         currentEquations.remove(id);
         refreshAllData();
@@ -756,6 +787,62 @@ public class GraphPlotter extends StackPane {
         }
         gc.stroke();
     }
+
+
+//    private void drawPolar(GraphicsContext gc, EquationData data) {
+//        gc.beginPath();
+//        gc.setStroke(data.color);
+//        gc.setLineWidth(2.5);
+//
+//        double[][] pts = data.polarCache;
+//
+//        for (int i = 1; i < pts.length; i++) {
+//            drawLine(
+//                    pts[i-1][0],
+//                    pts[i-1][1],
+//                    pts[i][0],
+//                    pts[i][1],
+//                    data.getColor()
+//            );
+//        }
+//    }
+
+    private void drawFunction_Polar(GraphicsContext gc, double w, double h, EquationData data) {
+        gc.beginPath();
+        gc.setStroke(data.color);
+        gc.setLineWidth(2.5);
+
+        // Use the cached x/y pairs if available
+        boolean first = true;
+        if (data.CacheX != null && data.CacheY != null) {
+            for (int i = 0; i < data.CacheX.length; i++) {
+                double x = data.CacheX[i], y = data.CacheY[i];
+                if (Double.isNaN(x) || Double.isNaN(y)) { first = true; continue; }
+                double px = (x - graphCenterX) * scale + w / 2.0;
+                double py = h / 2.0 - (y - graphCenterY) * scale;
+                if (first) { gc.moveTo(px, py); first = false; }
+                else { gc.lineTo(px, py); }
+            }
+            gc.stroke();
+        } else {
+            // fallback simple direct sampling if cache not ready
+            boolean started = true;
+            int steps = Math.max(200, (int)(w*1.5));
+            for (int i=0;i<=steps;i++){
+                double t = data.thetaMin + (data.thetaMax - data.thetaMin) * i / (double)steps;
+                double r = data.parser.evaluatePolar(t);
+                if (Double.isNaN(r)) { started = true; continue; }
+                double x = r * Math.cos(t);
+                double y = r * Math.sin(t);
+                double px = (x - graphCenterX) * scale + w/2;
+                double py = h/2 - (y - graphCenterY) * scale;
+                if (started) { gc.moveTo(px,py); started = false; }
+                else gc.lineTo(px,py);
+            }
+            gc.stroke();
+        }
+    }
+
 
     public EquationData getEquation(String id) {
         return currentEquations.get(id);

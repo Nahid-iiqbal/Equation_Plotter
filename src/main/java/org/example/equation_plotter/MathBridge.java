@@ -50,13 +50,21 @@ public class MathBridge {
                             .replace("\\", "") // Remove remaining backslashes
                             .replace(" ", "");
 
-                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue());
+                    boolean isPolar = javaMath.matches("^\\s*r\\s*=.*") || javaMath.contains("theta");
+
+                    String displayMath = javaMath.replaceAll("\\btheta\\b", "θ"); // cosmetic
+                    controller.updateWebViewDisplay(equationId, displayMath);     // update UI display
+
+                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(), isPolar);
                     plotter.refreshEquationData(equationId);
                     plotter.draw();
 
                     EquationData data = plotter.getEquation(equationId);
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
+                        if (isPolar) {
+                            controller.createPolarRangeControls(sliderBox, equationId); // new method in controller
+                        }
                     }
                 } catch (Exception ex) {
                     ex.printStackTrace();

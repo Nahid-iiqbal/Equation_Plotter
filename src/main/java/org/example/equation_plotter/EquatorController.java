@@ -44,6 +44,7 @@ public class EquatorController {
     @FXML
     private NavBar navbarController;
 
+    private final java.util.Map<String, javafx.scene.web.WebView> webViewMap = new java.util.HashMap<>();
     private GraphPlotter graphPlotter;
     private int addEqCount = 0;
     private final List<Color> defaultColors = Arrays.asList(
@@ -115,6 +116,7 @@ public class EquatorController {
         String id = "eq-" + System.nanoTime();
 
         WebView webView = new WebView();
+        webViewMap.put(id, webView);
         webView.setPrefSize(350, 60); // Updated size for better visibility
         webView.setContextMenuEnabled(false);
 
@@ -207,6 +209,93 @@ public class EquatorController {
 
         equation_container.getChildren().add(equationBlock);
         addEqCount++;
+    }
+
+    // Call: controller.createPolarRangeControls(sliderBox, id)
+    // New method: live-updating range controls
+    public void createPolarRangeControls(VBox container, String eqId) {
+        HBox rangeBox = new HBox(8);
+        rangeBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label caption = new Label("θ range:");
+        caption.setStyle("-fx-text-fill: white; -fx-font-size: 12px;");
+
+        TextField minField = new TextField("0");
+        TextField maxField = new TextField(String.valueOf(Math.PI * 2));
+        minField.setPrefWidth(80);
+        maxField.setPrefWidth(80);
+        minField.setStyle("-fx-font-size:11px;");
+        maxField.setStyle("-fx-font-size:11px;");
+
+        // debounce so live typing doesn't redraw every keystroke
+        javafx.animation.PauseTransition debounce = new javafx.animation.PauseTransition(javafx.util.Duration.millis(250));
+        Runnable applyRange = () -> {
+            try {
+                double min = parseAngle(minField.getText());
+                double max = parseAngle(maxField.getText());
+                EquationData ed = graphPlotter.getEquation(eqId);
+                if (ed != null && ed.isPolar) {
+                    ed.thetaMin = min;
+                    ed.thetaMax = max;
+                    graphPlotter.refreshEquationData(eqId);
+                    graphPlotter.draw();
+                }
+            } catch (Exception ex) {
+                // invalid input — ignore (or show tooltip in future)
+            }
+        };
+
+        // key released -> debounce
+        minField.setOnKeyReleased(ev -> {
+            debounce.playFromStart();
+            debounce.setOnFinished(e -> applyRange.run());
+        });
+        maxField.setOnKeyReleased(ev -> {
+            debounce.playFromStart();
+            debounce.setOnFinished(e -> applyRange.run());
+        });
+
+        // apply also on focus lost (safer)
+        minField.focusedProperty().addListener((obs, oldv, newv) -> { if (!newv) applyRange.run(); });
+        maxField.focusedProperty().addListener((obs, oldv, newv) -> { if (!newv) applyRange.run(); });
+
+        rangeBox.getChildren().addAll(caption, minField, new Label("≤ θ ≤"), maxField);
+
+        // remove any existing polar row for this equation (optional simple approach)
+        // In your code 'sliderBox' is per-equation; caller should ensure only one polar control is appended.
+        container.getChildren().add(rangeBox);
+    }
+
+    private double parseAngle(String s) {
+        String t = s.trim().toLowerCase().replace("π", "pi");
+        // simple replacements and recursive parse of * and /
+        if (t.contains("pi")) {
+            t = t.replace("pi", String.valueOf(Math.PI));
+        }
+        if (t.contains("/")) {
+            String[] parts = t.split("/");
+            return parseAngle(parts[0]) / parseAngle(parts[1]);
+        }
+        if (t.contains("*")) {
+            String[] parts = t.split("\\*");
+            return parseAngle(parts[0]) * parseAngle(parts[1]);
+        }
+        return Double.parseDouble(t);
+    }
+
+    // helper function
+    public void updateWebViewDisplay(String eqId, String displayAscii) {
+        javafx.scene.web.WebView wv = webViewMap.get(eqId);
+        if (wv == null) return;
+        // replace single quotes and backslashes for safe JS string literal
+        String safe = displayAscii.replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ");
+        // The page's MathField element id in your HTML appears to be 'mf' (used earlier).
+        // We set the ascii-math value of the field to the modified version (with θ).
+        try {
+            wv.getEngine().executeScript("document.getElementById('mf').setValue('" + safe + "', 'ascii-math');");
+        } catch (Exception e) {
+            // Ignore errors (page might not expose setValue exactly like this)
+        }
     }
 
     public void createSlidersBridge(EquationParser parser, VBox box, String id) {
