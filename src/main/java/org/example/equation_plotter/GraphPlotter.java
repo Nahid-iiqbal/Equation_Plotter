@@ -36,6 +36,7 @@ public class GraphPlotter extends StackPane {
     private boolean isMouseDown = false;
     private boolean isHovering = false;
     private boolean isSnapPoint = false;
+    private boolean polarGrid = false;
 
     private Point2D hoverPoint = null;
     private Color hoverColor = Color.CYAN;
@@ -335,8 +336,13 @@ public class GraphPlotter extends StackPane {
         gc.setFill(Color.web("#1e1e1e"));
         gc.fillRect(0, 0, w, h);
 
-        drawGrid(gc, w, h); // Your existing drawGrid method
+        if (polarGrid) {
+            drawPolarGrid(gc, w, h);
+        } else {
+            drawCartesianGrid(gc, w, h);
+        }
     }
+
 
     void drawGraphLayer() {
         GraphicsContext gc = graphCanvas.getGraphicsContext2D();
@@ -452,7 +458,7 @@ public class GraphPlotter extends StackPane {
         }
     }
 
-    public void drawGrid(GraphicsContext gc, double w, double h) {
+    public void drawCartesianGrid(GraphicsContext gc, double w, double h) {
         double left = graphCenterX - w / 2 / scale;
         double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
         double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
@@ -505,6 +511,124 @@ public class GraphPlotter extends StackPane {
         gc.strokeLine(0, xAxisPixel, w, xAxisPixel);
         gc.fillText("0", yAxisPixel - 10, xAxisPixel + 15);
     }
+
+    public void drawPolarGrid(GraphicsContext gc, double w, double h) {
+        // --- compute graph origin in pixel coords (align with cartesian grid origin) ---
+        double cx = (0 - graphCenterX) * scale + w / 2.0;        // pixel x of origin (0,0)
+        double cy = h / 2.0 - (0 - graphCenterY) * scale;       // pixel y of origin (0,0)
+
+        // style
+        gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 12));
+
+        // maximum radius (pixels) required to cover canvas from origin
+        double maxRadiusPx = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
+
+        // spacing logic (same idea as Cartesian)
+        double targetPixels = 100.0;
+        double rawStepUnits = targetPixels / Math.max(1e-12, scale);
+        double magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1e-12, rawStepUnits))));
+        double fraction = rawStepUnits / magnitude;
+        double majorStepUnits = (fraction < 2.0) ? 1 * magnitude : (fraction < 5.0) ? 2 * magnitude : 5 * magnitude;
+        double minorStepUnits = majorStepUnits / 5.0;
+
+        double majorStepPx = majorStepUnits * scale;
+        double minorStepPx = minorStepUnits * scale;
+
+        // --- draw minor rings (subtle) ---
+        gc.setStroke(Color.web("#252525"));
+        gc.setLineWidth(1.0);
+        for (double r = minorStepPx; r <= maxRadiusPx + 1e-6; r += minorStepPx) {
+            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+        }
+
+        // --- draw major rings (slightly brighter) ---
+        gc.setStroke(Color.web("#333333"));
+        gc.setLineWidth(1.2);
+        for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx) {
+            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+        }
+
+        // --- radial spokes (subtle) ---
+        gc.setStroke(Color.web("#2A2A2A"));
+        gc.setLineWidth(1.0);
+        // choose an angular step that looks good (15°) but make it divisible if zoomed out
+        int degreesStep = 15;
+        for (int deg = 0; deg < 360; deg += degreesStep) {
+            double ang = Math.toRadians(deg);
+            double x = cx + Math.cos(ang) * maxRadiusPx;
+            double y = cy - Math.sin(ang) * maxRadiusPx; // canvas Y downwards
+            gc.strokeLine(cx, cy, x, y);
+        }
+
+
+        // --- axis labels (copy-paste from cartesian grid) ---
+        gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+        gc.setStroke(Color.web("#404040"));
+        double left = graphCenterX - w / 2 / scale;
+        double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
+        double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
+        for (double x = Math.floor(left / majorStepUnits) * majorStepUnits; (x - left) * scale < w + scale; x += majorStepUnits) {
+            double px = (x - graphCenterX) * scale + w / 2;
+            if (Math.abs(x) > 1e-9) {
+                gc.setFill(Color.WHITE);
+                double labelY = Math.clamp(xAxisPixel + 15, 0, Math.max(0, h - 20));
+                gc.fillText(formatNumber(x), px, labelY);
+            }
+        }
+        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStepUnits) * majorStepUnits; (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStepUnits) {
+            double py = h / 2 - (y - graphCenterY) * scale;
+            if (Math.abs(y) > 1e-9) {
+                gc.setFill(Color.WHITE);
+                double labelX = Math.clamp(yAxisPixel - 15, Math.min(45, w), Math.max(45, w - 5));
+                gc.fillText(formatNumber(y), labelX, py);
+            }
+        }
+
+        // --- draw main axes ---
+        gc.setStroke(Color.WHITE);
+        gc.setLineWidth(2.0);
+        gc.strokeLine(cx-maxRadiusPx, cy, cx+maxRadiusPx, cy);
+        gc.strokeLine(cx, cy-maxRadiusPx, cx, cy+maxRadiusPx);
+
+        // --- degree labels around outer rim (Desmos style) ---
+        gc.setFill(Color.web("#999999"));
+        double padding = 14.0;
+        double labelRadius;
+
+        if ((cx > w*1/3 && cx < w*2/3) && (Math.abs(cy) > h*1/3 && Math.abs(cy) < h*2/3)){
+            labelRadius = Math.min(cx, Math.min(w-cx, Math.min(Math.abs(cy), h-Math.abs(cy))));
+        }
+        else if (cx > w*1/3 && cx < w*2/3){
+            labelRadius = Math.min(cx, w - cx);
+        }
+        else {
+            labelRadius = Math.max(Math.abs(cy), h - Math.abs(cy));
+        }
+        labelRadius = Math.floor(labelRadius / majorStepPx)*majorStepPx;
+        labelRadius -= padding;
+        for (int deg = 0; deg < 360; deg += 2 * degreesStep) {
+            double ang = Math.toRadians(deg);
+            double lx = cx + Math.cos(ang) * labelRadius;
+            double ly = cy - Math.sin(ang) * labelRadius;
+            String label = deg + "°";
+            // Adjust alignment depending on quadrant
+            if (deg == 90) {
+                gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
+            }
+            else if (deg == 270) {
+                gc.setTextAlign(javafx.scene.text.TextAlignment.RIGHT);
+            }
+            else {
+                gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+            }
+
+            if (lx > 5 && lx < w - 5 && ly > 5 && ly < h - 5) {
+                gc.fillText(label, lx, ly);
+            }
+        }
+
+    }
+
 
     private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data, String id) {
         // 1. CACHE CHECK FOR PERFORMANCE
@@ -788,25 +912,6 @@ public class GraphPlotter extends StackPane {
         gc.stroke();
     }
 
-
-//    private void drawPolar(GraphicsContext gc, EquationData data) {
-//        gc.beginPath();
-//        gc.setStroke(data.color);
-//        gc.setLineWidth(2.5);
-//
-//        double[][] pts = data.polarCache;
-//
-//        for (int i = 1; i < pts.length; i++) {
-//            drawLine(
-//                    pts[i-1][0],
-//                    pts[i-1][1],
-//                    pts[i][0],
-//                    pts[i][1],
-//                    data.getColor()
-//            );
-//        }
-//    }
-
     private void drawFunction_Polar(GraphicsContext gc, double w, double h, EquationData data) {
         gc.beginPath();
         gc.setStroke(data.color);
@@ -852,17 +957,14 @@ public class GraphPlotter extends StackPane {
         return graphCanvas;
     }
 
+    public void toggleGrid(){
+        polarGrid = (polarGrid) ? false : true;
+        draw();
+    }
+
+    public boolean polarGrid(){
+        return polarGrid;
+    }
+
 }
 
-//class CachedImplicit {
-//    List<double[]> lines;
-//    double scale;
-//    double cx, cy;
-//
-//    public CachedImplicit(List<double[]> lines, double scale, double cx, double cy) {
-//        this.lines = lines;
-//        this.scale = scale;
-//        this.cx = cx;
-//        this.cy = cy;
-//    }
-//}

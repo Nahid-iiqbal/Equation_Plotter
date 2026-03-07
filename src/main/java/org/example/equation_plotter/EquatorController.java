@@ -32,7 +32,7 @@ public class EquatorController {
     @FXML
     private AnchorPane graph_container;
     @FXML
-    private Button btn_home, btn_zoom_in, btn_zoom_out;
+    private Button btn_home, btn_zoom_in, btn_zoom_out, btn_toggle_grid;
     @FXML
     private BorderPane mainBorderPane;
     @FXML
@@ -70,6 +70,7 @@ public class EquatorController {
         setBtn_home();
         setBtn_zoom_in();
         setBtn_zoom_out();
+        setBtn_toggle_grid();
         initSidebarButtons();
     }
 
@@ -96,6 +97,7 @@ public class EquatorController {
         AnchorPane.setRightAnchor(btn_home, 10.0);
         AnchorPane.setRightAnchor(btn_zoom_in, 10.0);
         AnchorPane.setRightAnchor(btn_zoom_out, 10.0);
+        AnchorPane.setRightAnchor(btn_toggle_grid, 10.0);
     }
 
     @FXML
@@ -105,6 +107,7 @@ public class EquatorController {
         AnchorPane.setRightAnchor(btn_home, 410.0);
         AnchorPane.setRightAnchor(btn_zoom_in, 410.0);
         AnchorPane.setRightAnchor(btn_zoom_out, 410.0);
+        AnchorPane.setRightAnchor(btn_toggle_grid, 410.0);
     }
 
     @FXML
@@ -402,6 +405,13 @@ public class EquatorController {
         btn_zoom_out.setText("");
     }
 
+    private void setBtn_toggle_grid() {
+        FontIcon gridIcon = new FontIcon("fas-border-all");
+        gridIcon.setIconColor(Color.web("#00FFFF"));
+        btn_toggle_grid.setGraphic(gridIcon);
+        btn_toggle_grid.setText("");
+    }
+
     @FXML
     void btnHomePressed(ActionEvent event) {
         graphPlotter.reset();
@@ -415,6 +425,11 @@ public class EquatorController {
     @FXML
     void zoomOutPressed(ActionEvent event) {
         graphPlotter.zoomOut();
+    }
+
+    @FXML
+    void toggleGridPressed(ActionEvent event) {
+        graphPlotter.toggleGrid();
     }
 
     public void handleNewFile(ActionEvent event) {

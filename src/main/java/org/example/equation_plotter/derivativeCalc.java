@@ -91,7 +91,10 @@ public class derivativeCalc {
         gc.setFill(Color.web("#1e1e1e"));
         gc.fillRect(0, 0, w, h);
         // Use the existing GraphPlotter logic to draw the coordinate system and the curve
-        gp.drawGrid(gc, w, h);
+        if (gp.polarGrid())
+            gp.drawPolarGrid(gc, w, h);
+        else
+            gp.drawCartesianGrid(gc, w, h);
         EquationData temp = new EquationData(eqn);
         temp.setColor(Color.web("#1EF737"));
         derivativeEqnData.setColor(Color.web("#ed2d63"));
