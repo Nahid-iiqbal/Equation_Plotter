@@ -5,13 +5,12 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.AnchorPane;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.input.MouseButton;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
@@ -59,9 +58,9 @@ public class EquatorController {
             navbarController.setMainController(this);
         }
         graphPlotter = new GraphPlotter(graph_container.getPrefWidth(), graph_container.getPrefHeight());
+        GraphPlotter.setMainInstance(graphPlotter);
         graphPlotter.prefWidthProperty().bind(graph_container.widthProperty());
         graphPlotter.prefHeightProperty().bind(graph_container.heightProperty());
-
         graph_container.getChildren().addFirst(graphPlotter);
         graph_container.setStyle("-fx-background-color: transparent;");
         graphPlotter.toBack();
@@ -118,52 +117,67 @@ public class EquatorController {
     private void addEquation() {
         String id = "eq-" + System.nanoTime();
 
+        // 1. Setup Math Input (WebView)
         WebView webView = new WebView();
         webViewMap.put(id, webView);
-        webView.setPrefSize(350, 60); // Updated size for better visibility
+        webView.setPrefSize(350, 60);
         webView.setContextMenuEnabled(false);
 
-        // Standard event filter for keys
-        webView.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            String keystroke = null;
-            switch (event.getCode()) {
-                case BACK_SPACE:
-                    keystroke = "Backspace";
-                    break;
-                case LEFT:
-                    keystroke = "Left";
-                    break;
-                case RIGHT:
-                    keystroke = "Right";
-                    break;
-                case UP:
-                    keystroke = "Up";
-                    break;
-                case DOWN:
-                    keystroke = "Down";
-                    break;
-                case DELETE:
-                    keystroke = "Del";
-                    break;
-                default:
-                    break;
-            }
+        // 2. Setup Visibility Toggle (The Circle)
+        ToggleButton visibilityToggle = new ToggleButton();
+        visibilityToggle.getStyleClass().add("desmos-toggle");
+        visibilityToggle.setSelected(true);
+        visibilityToggle.setMouseTransparent(true); // Let clicks pass through to the StackPane
 
-            if (keystroke != null) {
-                // Use the JS variable 'mathField' directly and call 'keystroke'
-                webView.getEngine().executeScript("window.mathField.keystroke('" + keystroke + "');");
-                event.consume();
+// 2. Setup Color Picker
+        Color initCol = defaultColors.get(colorIndex % defaultColors.size());
+        colorIndex++;
+        ColorPicker cp = new ColorPicker(initCol);
+        cp.setOpacity(0.0);
+        cp.setPrefSize(25, 25);
+        cp.setMouseTransparent(true); // CRITICAL: Let clicks pass through!
+
+// 3. Synchronization Logic
+        Runnable syncStyle = () -> {
+            Color c = cp.getValue();
+            String hex = toHexString(c);
+            if (visibilityToggle.isSelected()) {
+                visibilityToggle.setStyle("-fx-background-color: " + hex + "; -fx-border-color: transparent;");
+            } else {
+                visibilityToggle.setStyle("-fx-background-color: transparent; -fx-border-color: " + hex + ";");
+            }
+        };
+        syncStyle.run();
+
+// 4. THE FIX: The Event Controller
+        StackPane toggleStack = new StackPane(visibilityToggle, cp);
+        toggleStack.setAlignment(Pos.CENTER);
+        toggleStack.setCursor(Cursor.HAND);
+
+        toggleStack.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                // LEFT CLICK: Toggle Visibility
+                visibilityToggle.setSelected(!visibilityToggle.isSelected());
+                EquationData eq = graphPlotter.getEquation(id);
+                if (eq != null) {
+                    eq.isVisible = visibilityToggle.isSelected();
+                    syncStyle.run();
+                    graphPlotter.draw();
+                }
+            } else if (event.getButton() == MouseButton.SECONDARY) {
+                // RIGHT CLICK: Force the color picker to show
+                cp.show();
             }
         });
 
-        // Load the HTML file
-        java.net.URL htmlUrl = getClass().getResource("/org/example/equation_plotter/math_input.html");
-        if (htmlUrl != null) {
-            webView.getEngine().load(htmlUrl.toExternalForm());
-            //webView.getEngine().load("https://www.google.com");
+// The ColorPicker still needs its own action for when the user picks a color
+        cp.setOnAction(event -> {
+            graphPlotter.updateEqColor(id, cp.getValue());
+            syncStyle.run();
+            graphPlotter.draw();
+        });
 
-        }
-
+        // 6. Remove Button
         Button btn_rmv = new Button();
         btn_rmv.getStyleClass().add("icon-button");
         FontIcon btn_rmv_icon = new FontIcon("fas-times");
@@ -171,31 +185,44 @@ public class EquatorController {
         btn_rmv_icon.setIconSize(18);
         btn_rmv.setGraphic(btn_rmv_icon);
 
-        Color initCol = defaultColors.get(colorIndex % defaultColors.size());
-        colorIndex++;
-        ColorPicker cp = new ColorPicker(initCol);
-        cp.getStyleClass().add("dot-color-picker");
-        cp.setOnAction(event -> {
-            graphPlotter.updateEqColor(id, cp.getValue());
-        });
+        // 7. Layout Assembly
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
-        topRow.getChildren().addAll(webView, btn_rmv, cp);
+        topRow.getChildren().addAll(toggleStack, webView, btn_rmv);
 
         VBox sliderBox = new VBox(5);
         VBox equationBlock = new VBox(5);
         equationBlock.setPadding(new Insets(5, 0, 5, 0));
         equationBlock.getChildren().addAll(topRow, sliderBox);
 
-        // --- THE FIX: MOVE LOGIC INSIDE THE LOAD WORKER ---
+        // 8. MathBridge & WebView Integration
         MathBridge bridge = new MathBridge(id, graphPlotter, cp, sliderBox, this);
+
+        webView.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            String keystroke = null;
+            switch (event.getCode()) {
+                case BACK_SPACE -> keystroke = "Backspace";
+                case LEFT -> keystroke = "Left";
+                case RIGHT -> keystroke = "Right";
+                case UP -> keystroke = "Up";
+                case DOWN -> keystroke = "Down";
+                case DELETE -> keystroke = "Del";
+            }
+            if (keystroke != null) {
+                webView.getEngine().executeScript("window.mathField.keystroke('" + keystroke + "');");
+                event.consume();
+            }
+        });
+
+        java.net.URL htmlUrl = getClass().getResource("/org/example/equation_plotter/math_input.html");
+        if (htmlUrl != null) {
+            webView.getEngine().load(htmlUrl.toExternalForm());
+        }
 
         webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
                 JSObject window = (JSObject) webView.getEngine().executeScript("window");
                 window.setMember("javaConnector", bridge);
-
-                // If there's already text in the field (from a file load), plot it now
                 String currentMath = (String) webView.getEngine().executeScript("document.getElementById('mf').getValue('ascii-math')");
                 if (currentMath != null && !currentMath.trim().isEmpty()) {
                     bridge.updateMath(currentMath);
@@ -212,6 +239,14 @@ public class EquatorController {
 
         equation_container.getChildren().add(equationBlock);
         addEqCount++;
+    }
+
+    // Add this helper method to EquatorController.java
+    private String toHexString(Color color) {
+        return String.format("#%02X%02X%02X",
+                (int) (color.getRed() * 255),
+                (int) (color.getGreen() * 255),
+                (int) (color.getBlue() * 255));
     }
 
     // Call: controller.createPolarRangeControls(sliderBox, id)
@@ -259,8 +294,12 @@ public class EquatorController {
         });
 
         // apply also on focus lost (safer)
-        minField.focusedProperty().addListener((obs, oldv, newv) -> { if (!newv) applyRange.run(); });
-        maxField.focusedProperty().addListener((obs, oldv, newv) -> { if (!newv) applyRange.run(); });
+        minField.focusedProperty().addListener((obs, oldv, newv) -> {
+            if (!newv) applyRange.run();
+        });
+        maxField.focusedProperty().addListener((obs, oldv, newv) -> {
+            if (!newv) applyRange.run();
+        });
 
         rangeBox.getChildren().addAll(caption, minField, new Label("≤ θ ≤"), maxField);
 

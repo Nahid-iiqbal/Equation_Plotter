@@ -21,7 +21,7 @@ import java.util.logging.Logger;
 public class Equator extends Application {
     private long startTime = -1;
     // Increased duration slightly to allow the chaos to build up
-    private final double DRAW_DURATION_NANOS = 5_000_000_000.0;
+    private final double DRAW_DURATION_NANOS = 3_500_000_000.0;
     private static final Logger LOGGER = Logger.getLogger(Equator.class.getName());
     private final double sigma = 10.0;
     private final double rho = 28.0;
@@ -29,6 +29,7 @@ public class Equator extends Application {
     private final double dt = 0.01; // Integration time step
     // --- Chaos Theory: Lorenz Attractor State ---
     private double lx = 0.1, ly = 0, lz = 0;
+    private int frameCount = 0;
 
     @Override
     public void start(Stage stage) throws IOException {
@@ -54,14 +55,21 @@ public class Equator extends Application {
                 double progress = Math.min(1.0, (now - startTime) / DRAW_DURATION_NANOS);
 
                 // Create a "motion blur" trail effect by not fully clearing
-                gc.setFill(Color.rgb(0, 0, 0, 0.037));
-                gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
-
+                if (frameCount % 120 == 0) {
+                    gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+                    gc.setFill(Color.BLACK);
+                    gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+                    frameCount = 0;
+                } else {
+                    // 2. Standard motion blur trail
+                    gc.setFill(Color.rgb(0, 0, 0, 0.045)); // Slightly increased for faster fade
+                    gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+                }
                 // Calculate and draw multiple steps per frame for smooth animation
                 for (int i = 0; i < 9; i++) {
                     drawChaosStep(gc, canvas.getWidth(), canvas.getHeight(), progress);
                 }
-
+                frameCount++;
                 if (progress >= 1.0) {
                     this.stop();
                     closeAndTransition(welcomeStage, stage);
@@ -85,8 +93,8 @@ public class Equator extends Application {
         lz += dz;
 
         // Scaling for the 500x100 canvas
-        double scaleX = 8.5;
-        double scaleZ = 1.7;
+        double scaleX = 7;
+        double scaleZ = 3.5;
         double centerX = w / 2;
         double centerY = h - 5;
 
@@ -113,21 +121,39 @@ public class Equator extends Application {
     }
 
     private void closeAndTransition(Stage welcomeStage, Stage mainStage) {
-        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(Duration.seconds(0.8));
-        delay.setOnFinished(e -> {
+        // 1. Create a Fade out for the welcome screen to make it stylish
+        welcomeStage.getScene().setFill(Color.web("#1e1e1e"));
+        javafx.animation.FadeTransition fadeOut = new javafx.animation.FadeTransition(
+                Duration.millis(500), welcomeStage.getScene().getRoot());
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        fadeOut.setOnFinished(e -> {
             welcomeStage.close();
-            try {
-                FXMLLoader fxmlLoader = new FXMLLoader(Equator.class.getResource("view.fxml"));
-                Scene scene = new Scene(fxmlLoader.load());
-                mainStage.setScene(scene);
-                mainStage.setTitle("Equator");
-                mainStage.getIcons().add(new Image(Objects.requireNonNull(Equator.class.getResourceAsStream("/icon.png"))));
-                mainStage.setMaximized(true);
-                mainStage.show();
-            } catch (IOException ex) {
-                LOGGER.log(Level.SEVERE, "Error transitioning from welcome screen to main stage", ex);
-            }
+
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    // Ensure the path to view.fxml is correct relative to the class
+                    FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("view.fxml"));
+                    Parent root = fxmlLoader.load();
+                    Scene scene = new Scene(root);
+
+                    mainStage.setScene(scene);
+                    mainStage.setTitle("Equator");
+
+                    // Add your icon (ensure /icon.png exists in resources)
+                    mainStage.getIcons().add(new Image(Objects.requireNonNull(
+                            getClass().getResourceAsStream("/icon.png"))));
+
+                    // Workaround for Maximized state bug in some JavaFX versions
+                    mainStage.setMaximized(true);
+                    mainStage.show();
+
+                } catch (IOException ex) {
+                    LOGGER.log(Level.SEVERE, "Failed to load main screen", ex);
+                }
+            });
         });
-        delay.play();
+        fadeOut.play();
     }
 }

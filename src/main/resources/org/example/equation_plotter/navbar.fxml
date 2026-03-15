@@ -23,6 +23,10 @@
                 <MenuItem fx:id="derivativeCalculator" mnemonicParsing="false" onAction="#onDerCalc"
                           text="Derivative Calculator"/>
             </items>
+            <items>
+                <MenuItem fx:id="integralCalculator" mnemonicParsing="false" onAction="#onIntCalc"
+                          text="Integral Calculator"/>
+            </items>
         </Menu>
         <Menu mnemonicParsing="false" text="Help">
             <items>

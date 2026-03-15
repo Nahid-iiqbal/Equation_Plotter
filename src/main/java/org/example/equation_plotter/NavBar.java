@@ -95,7 +95,6 @@ public class NavBar {
         Map<String, EquationData> activeEqns = GraphPlotter.getCurrentEquations();
 
         if (activeEqns.isEmpty()) {
-            // You can add an alert here if no equations are present
             return;
         }
 
@@ -105,5 +104,18 @@ public class NavBar {
                 0, 1000
         );
         selector.show();
+    }
+
+    @FXML
+    void onIntCalc(ActionEvent event) {
+        var eqMap = GraphPlotter.getCurrentEquations();
+        if (eqMap.isEmpty()) {
+            new Alert(Alert.AlertType.WARNING, "No active equations found to integrate.").show();
+            return;
+        }
+
+        // Pass the first equation as default
+        integralCalc calc = new integralCalc(eqMap.values().iterator().next());
+        calc.show();
     }
 }

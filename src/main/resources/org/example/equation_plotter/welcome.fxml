@@ -28,7 +28,7 @@
             <Font name="JetBrains Mono" size="14.0"/>
         </font>
     </Label>
-    <StackPane fx:id="waveContainer" prefHeight="150.0" prefWidth="500.0" style="-fx-background-color: #000000;">
-        <Canvas fx:id="waveCanvas" height="100.0" width="500.0"/>
+    <StackPane fx:id="waveContainer" prefHeight="200.0" prefWidth="500.0" style="-fx-background-color: #000000;">
+        <Canvas fx:id="waveCanvas" height="200.0" width="500.0"/>
     </StackPane>
 </VBox>

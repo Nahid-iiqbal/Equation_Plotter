@@ -306,3 +306,87 @@
     -fx-font-weight: bold;
     -fx-cursor: hand;
 }
+
+.result-box {
+    -fx-background-color: rgba(0, 255, 255, 0.15);
+    -fx-border-color: #00FFFF;
+    -fx-border-width: 2;
+    -fx-text-fill: #00FFFF;
+    -fx-font-family: "JetBrains Mono";
+    -fx-font-size: 18px;
+    -fx-padding: 15;
+    -fx-background-radius: 5;
+}
+
+.input-sidebar {
+    -fx-background-color: #252526;
+    -fx-padding: 20;
+    -fx-pref-width: 250;
+    -fx-border-color: #3e3e42;
+    -fx-border-width: 0 0 0 1;
+}
+
+.result-box-top {
+    -fx-background-color: rgba(30, 30, 30, 0.85);
+    -fx-border-color: #00FFFF;
+    -fx-border-width: 2;
+    -fx-text-fill: #00FFFF;
+    -fx-font-family: "JetBrains Mono";
+    -fx-font-size: 18px;
+    -fx-padding: 10 20;
+    -fx-background-radius: 5;
+    -fx-effect: dropshadow(three-pass-box, rgba(0, 255, 255, 0.4), 10, 0, 0, 0);
+}
+
+.neon-button-small {
+    -fx-background-color: transparent;
+    -fx-border-color: #00FFFF;
+    -fx-text-fill: #00FFFF;
+    -fx-font-family: "JetBrains Mono";
+    -fx-padding: 5 15;
+}
+
+/* style.css */
+
+.integrated-color-picker {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-color-label-visible: false;
+    -fx-color-rect-width: 0;
+    -fx-color-rect-height: 0;
+}
+
+.integrated-color-picker .color-picker-label {
+    -fx-visibility: hidden;
+}
+
+.desmos-toggle {
+    -fx-min-width: 20px;
+    -fx-min-height: 20px;
+    -fx-max-width: 20px;
+    -fx-max-height: 20px;
+    -fx-background-radius: 50%;
+    -fx-border-radius: 50%;
+    -fx-border-width: 2;
+    -fx-cursor: hand;
+}
+
+.color-picker {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.nav-holder .button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #00FFFF; /* Cyan text */
+    -fx-border-color: #00FFFF;
+    -fx-border-radius: 5px;
+    -fx-font-weight: bold;
+    -fx-padding: 5px 15px;
+}
+
+/* Hover effect when the mouse is over the buttons */
+.nav-holder .button:hover {
+    -fx-background-color: #00FFFF;
+    -fx-text-fill: #1e1e1e; /* Dark text on hover */
+}

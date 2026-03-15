@@ -15,7 +15,7 @@ public class EquationData {
     private double xStart;
     private int startIndex;
     private int size;
-
+    public boolean isVisible = true;
     // new flags for polar
     public boolean isPolar = false;
     public double thetaMin = 0;
@@ -65,9 +65,9 @@ public class EquationData {
         if (!isPolar || parser == null) return;
 
         // number of samples: base on pixel width * factor for smoothness
-        int samples = Math.max(200, (int)(width * 1.5));
-        CacheX = new double[samples+1];
-        CacheY = new double[samples+1];
+        int samples = Math.max(200, (int) (width * 1.5));
+        CacheX = new double[samples + 1];
+        CacheY = new double[samples + 1];
         double step = (thetaMax - thetaMin) / samples;
 
         for (int i = 0; i <= samples; i++) {
@@ -107,7 +107,18 @@ public class EquationData {
         this.b = (int) (color.getBlue() * 255);
     }
 
-    public Color getColor() {
-        return color;
+    public double calculateIntegral(double a, double b, int n) {
+        if (n % 2 != 0) n++; // Simpson's rule requires an even number of intervals
+        double h = (b - a) / n;
+        double sum = parser.evaluateExplicit(a) + parser.evaluateExplicit(b);
+
+        for (int i = 1; i < n; i++) {
+            double x = a + i * h;
+            double y = parser.evaluateExplicit(x);
+            // Odd indices get weight 4, even indices get weight 2
+            sum += (i % 2 != 0) ? 4 * y : 2 * y;
+        }
+        return sum * (h / 3.0);
     }
+
 }
