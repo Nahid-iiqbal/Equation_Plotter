@@ -203,8 +203,8 @@ public class integralCalc {
         EquationData localEq2 = (eq2 != null) ? localPlotter.getEquation("s") : null;
         if (localEq1 == null) return;
 
-        boolean imp1 = localEq1.parser.isImplicit();
-        boolean imp2 = localEq2 != null && localEq2.parser.isImplicit();
+        boolean imp1 = (localEq1.parser.eqtype == EquationParser.EqType.Implicit);
+        boolean imp2 = localEq2 != null && (localEq2.parser.eqtype == EquationParser.EqType.Implicit);
 
         double start = Math.min(a, b);
         double end = Math.max(a, b);
@@ -401,8 +401,8 @@ public class integralCalc {
         if (n % 2 != 0) n++;
         double h = (b - a) / n;
 
-        boolean eq1Implicit = eq1.parser.isImplicit();
-        boolean eq2Implicit = eq2 != null && eq2.parser != null && eq2.parser.isImplicit();
+        boolean eq1Implicit = (eq1.parser.eqtype == EquationParser.EqType.Implicit);
+        boolean eq2Implicit = eq2 != null && eq2.parser != null && (eq2.parser.eqtype == EquationParser.EqType.Implicit);
 
         double yLo = localPlotter.getCenterY() - (localPlotter.getHeight() / 2) / localPlotter.getScale();
         double yHi = localPlotter.getCenterY() + (localPlotter.getHeight() / 2) / localPlotter.getScale();

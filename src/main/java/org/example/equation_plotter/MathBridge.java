@@ -50,19 +50,17 @@ public class MathBridge {
                             .replace("\\", "") // Remove remaining backslashes
                             .replace(" ", "");
 
-                    boolean isPolar = javaMath.matches("^\\s*r\\s*=.*") || javaMath.contains("theta");
+                    EquationParser parser = new EquationParser(javaMath);
+                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(), parser.getEqType());
 
-                    String displayMath = javaMath.replaceAll("\\btheta\\b", "θ"); // cosmetic
-                    controller.updateWebViewDisplay(equationId, displayMath);     // update UI display
 
-                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(), isPolar);
                     plotter.refreshEquationData(equationId);
                     plotter.draw();
 
                     EquationData data = plotter.getEquation(equationId);
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
-                        if (isPolar) {
+                        if (data.eqType == EquationParser.EqType.Polar || data.eqType == EquationParser.EqType.Parametric) {
                             controller.createPolarRangeControls(sliderBox, equationId); // new method in controller
                         }
                     }

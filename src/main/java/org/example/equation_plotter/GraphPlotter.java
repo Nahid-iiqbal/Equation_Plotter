@@ -198,7 +198,7 @@ public class GraphPlotter extends StackPane {
         for (EquationData eq : currentEquations.values()) {
 
             // FIX: This line MUST be uncommented to prevent NPE lag while panning
-            if (eq.parser.isImplicit()) continue;
+            if (eq.parser.eqtype == EquationParser.EqType.Implicit) continue;
 
             double cy = eq.getY(gx);
             if (!Double.isNaN(cy)) {
@@ -222,8 +222,14 @@ public class GraphPlotter extends StackPane {
         double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
 
         EquationData equation = currentEquations.get(id);
-        if (!equation.parser.isImplicit()) {
+        if (equation.parser.eqtype == EquationParser.EqType.Explicit) {
             equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        }
+        else if (equation.eqType == EquationParser.EqType.Polar){
+            equation.buildCachePolar(equation.thetaMin, equation.thetaMax, getWidth());
+        }
+        else if (equation.eqType == EquationParser.EqType.Parametric){
+            equation.buildCacheParametric(equation.tMin, equation.tMax, getWidth());
         }
 
         updateIntersections();
@@ -239,10 +245,10 @@ public class GraphPlotter extends StackPane {
 
         for (int i = 0; i < equations.size(); i++) {
             EquationData e1 = equations.get(i);
-            if (e1.parser.isImplicit()) continue;
+            if (e1.parser.eqtype == EquationParser.EqType.Implicit) continue;
             for (int j = i + 1; j < equations.size(); j++) {
                 EquationData e2 = equations.get(j);
-                if (e2.parser.isImplicit()) continue;
+                if (e2.parser.eqtype == EquationParser.EqType.Implicit) continue;
 
                 double prevX = xMin;
                 double prevDiff = e1.getY(prevX) - e2.getY(prevX);
@@ -272,7 +278,7 @@ public class GraphPlotter extends StackPane {
         double scanStep = 2.0 / scale;
 
         for (EquationData eq : currentEquations.values()) {
-            if (eq.parser.isImplicit()) continue;
+            if (eq.parser.eqtype == EquationParser.EqType.Implicit) continue;
 
             // Y-Intercept
             if (xMin <= 0 && xMax >= 0) {
@@ -420,9 +426,12 @@ public class GraphPlotter extends StackPane {
 
         for (EquationData equation : currentEquations.values()) {
             if (equation.parser != null) {
-                if (equation.isPolar) {
+                if (equation.eqType == EquationParser.EqType.Polar) {
                     equation.buildCachePolar(equation.thetaMin, equation.thetaMax, w);
-                } else if (!equation.parser.isImplicit()) {
+                } else if (equation.parser.eqtype == EquationParser.EqType.Parametric){
+                    equation.buildCacheParametric(equation.tMin, equation.tMax, w);
+                }
+                else if (equation.parser.eqtype != EquationParser.EqType.Implicit) {
                     equation.buildCacheExplicit(graphMinX, graphMaxX, w);
                 }
             }
@@ -504,10 +513,12 @@ public class GraphPlotter extends StackPane {
             String id = entry.getKey();
             EquationData equation = entry.getValue();
             if (!equation.isVisible) continue;
-            if (equation.parser.isImplicit()) {
+            if (equation.parser.eqtype == EquationParser.EqType.Implicit) {
                 drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
-            } else if (equation.isPolar || equation.parser.isPolar()) {
+            } else if (equation.eqType == EquationParser.EqType.Polar || equation.parser.eqtype == EquationParser.EqType.Polar) {
                 drawFunction_Polar(gc, w, h, equation);
+            } else if (equation.eqType == EquationParser.EqType.Parametric || equation.parser.eqtype == EquationParser.EqType.Parametric){
+                drawFunction_Parametric(gc,w,h,equation);
             } else {
                 drawFunction_Explicit(gc, w, h, equation);
             }
@@ -696,15 +707,18 @@ public class GraphPlotter extends StackPane {
     }
 
     // new overload:
-    public void addEquationToHashmap(String id, String fullInput, Color color, boolean isPolar) {
+    public void addEquationToHashmap(String id, String fullInput, Color color, EquationParser.EqType eqType) {
         EquationData data = new EquationData();
         data.raw = fullInput;
         data.parser = new EquationParser(fullInput);
         data.setColor(color);
-        data.isPolar = isPolar;             // new field in EquationData
-        // default theta range:
+//        if (isPolar) data.eqType = EquationParser.EqType.Polar;             // new field in EquationData
+        data.eqType = eqType;
+        // default theta and t range:
         data.thetaMin = 0;
         data.thetaMax = 2 * Math.PI;
+        data.tMin = 0;
+        data.tMax = 1.0;
         // clear caches & active tasks (existing code)
         implicitCache.remove(id);
         if (activeTasks.containsKey(id)) {
@@ -943,28 +957,28 @@ public class GraphPlotter extends StackPane {
                 }
             }
             gc.stroke();
-        } else {
-            // fallback simple direct sampling if cache not ready
-            boolean started = true;
-            int steps = Math.max(200, (int) (w * 1.5));
-            for (int i = 0; i <= steps; i++) {
-                double t = data.thetaMin + (data.thetaMax - data.thetaMin) * i / (double) steps;
-                double r = data.parser.evaluatePolar(t);
-                if (Double.isNaN(r)) {
-                    started = true;
-                    continue;
-                }
-                double x = r * Math.cos(t);
-                double y = r * Math.sin(t);
-                double px = (x - graphCenterX) * scale + w / 2;
-                double py = h / 2 - (y - graphCenterY) * scale;
-                if (started) {
-                    gc.moveTo(px, py);
-                    started = false;
-                } else gc.lineTo(px, py);
+        }
+    }
+
+    private void drawFunction_Parametric(GraphicsContext gc, double w, double h, EquationData data) {
+        gc.beginPath();
+        gc.setStroke(data.color);
+        gc.setLineWidth(2.5);
+
+        // If we have cached X/Y arrays use them (fast)
+        if (data.CacheX != null && data.CacheY != null) {
+            boolean first = true;
+            for (int i = 0; i < data.CacheX.length; i++) {
+                double x = data.CacheX[i], y = data.CacheY[i];
+                if (Double.isNaN(x) || Double.isNaN(y)) { first = true; continue; }
+                double px = (x - graphCenterX) * scale + w / 2.0;
+                double py = h / 2.0 - (y - graphCenterY) * scale;
+                if (first) { gc.moveTo(px, py); first = false; }
+                else gc.lineTo(px, py);
             }
             gc.stroke();
         }
+
     }
 
     public void toggleGrid() {

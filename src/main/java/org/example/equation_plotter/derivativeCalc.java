@@ -56,7 +56,7 @@ public class derivativeCalc {
     }
 
     public void calculateDer() {
-        if (eqn.parser.isImplicit()) return;
+        if (eqn.parser.eqtype == EquationParser.EqType.Implicit) return;
 
         // 1. Get the symbolic derivative string
         String rawInput = addBracketsToTrig(eqn.raw);

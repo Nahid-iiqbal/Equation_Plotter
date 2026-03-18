@@ -1,5 +1,6 @@
 package org.example.equation_plotter;
 
+import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -252,14 +253,23 @@ public class EquatorController {
     // Call: controller.createPolarRangeControls(sliderBox, id)
     // New method: live-updating range controls
     public void createPolarRangeControls(VBox container, String eqId) {
+        EquationData ed = graphPlotter.getEquation(eqId);
+
         HBox rangeBox = new HBox(8);
         rangeBox.setAlignment(Pos.CENTER_LEFT);
 
-        Label caption = new Label("θ range:");
+        String captionlabel = "";
+        if (ed.eqType == EquationParser.EqType.Polar) captionlabel = "θ range:";
+        else if (ed.eqType == EquationParser.EqType.Parametric) captionlabel = "t range";
+
+        Label caption = new Label(captionlabel);
         caption.setStyle("-fx-text-fill: white; -fx-font-size: 12px;");
 
         TextField minField = new TextField("0");
-        TextField maxField = new TextField(String.valueOf(Math.PI * 2));
+        double maxLimit = 1.0;
+            if (ed.eqType == EquationParser.EqType.Polar) maxLimit = Math.PI * 2;
+        TextField maxField = new TextField(String.valueOf(maxLimit));
+
         minField.setPrefWidth(80);
         maxField.setPrefWidth(80);
         minField.setStyle("-fx-font-size:11px;");
@@ -271,27 +281,42 @@ public class EquatorController {
             try {
                 double min = parseAngle(minField.getText());
                 double max = parseAngle(maxField.getText());
-                EquationData ed = graphPlotter.getEquation(eqId);
-                if (ed != null && ed.isPolar) {
-                    ed.thetaMin = min;
-                    ed.thetaMax = max;
+
+
+                if (ed != null) {
+                    if (ed.eqType == EquationParser.EqType.Polar){
+                        ed.thetaMin = min;
+                        ed.thetaMax = max;
+                    } else if (ed.eqType == EquationParser.EqType.Parametric){
+                        ed.tMin = min;
+                        ed.tMax = max;
+                    }
+
+
                     graphPlotter.refreshEquationData(eqId);
                     graphPlotter.draw();
+                    Platform.runLater(() -> {
+                        graphPlotter.refreshEquationData(eqId);
+                        graphPlotter.draw();
+                    });
                 }
-            } catch (Exception ex) {
-                // invalid input — ignore (or show tooltip in future)
-            }
+            } catch (Exception ignored) {}
         };
 
         // key released -> debounce
-        minField.setOnKeyReleased(ev -> {
-            debounce.playFromStart();
+        minField.textProperty().addListener((obs, oldVal, newVal) -> {
             debounce.setOnFinished(e -> applyRange.run());
-        });
-        maxField.setOnKeyReleased(ev -> {
             debounce.playFromStart();
-            debounce.setOnFinished(e -> applyRange.run());
         });
+
+        maxField.textProperty().addListener((obs, oldVal, newVal) -> {
+            debounce.setOnFinished(e -> applyRange.run());
+            debounce.playFromStart();
+        });
+
+        // enter pressed ->update
+        minField.setOnAction(e -> applyRange.run());
+        maxField.setOnAction(e -> applyRange.run());
 
         // apply also on focus lost (safer)
         minField.focusedProperty().addListener((obs, oldv, newv) -> {
@@ -301,7 +326,8 @@ public class EquatorController {
             if (!newv) applyRange.run();
         });
 
-        rangeBox.getChildren().addAll(caption, minField, new Label("≤ θ ≤"), maxField);
+        String middle = (ed.eqType == EquationParser.EqType.Parametric) ? "≤ t ≤" : "≤ θ ≤";
+        rangeBox.getChildren().addAll(caption, minField, new Label(middle), maxField);
 
         // remove any existing polar row for this equation (optional simple approach)
         // In your code 'sliderBox' is per-equation; caller should ensure only one polar control is appended.
