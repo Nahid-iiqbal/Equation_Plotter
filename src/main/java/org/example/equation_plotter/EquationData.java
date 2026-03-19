@@ -5,7 +5,6 @@ import javafx.scene.paint.Color;
 import java.util.Arrays;
 
 public class EquationData {
-    public boolean isPolar;
     String raw;
     EquationParser parser;
     Color color;
@@ -17,15 +16,17 @@ public class EquationData {
     private int startIndex;
     private int size;
     public boolean isVisible = true;
+
+    EquationParser.EqType eqType;
     // new flags for polar
-//    public boolean isPolar = false;
     public double thetaMin = 0;
     public double tMin = 0.0;
     public double thetaMax = 2 * Math.PI;
     public double tMax = 1.0;
+
+
     // caches for polar and parametrix
     public double[] CacheX;
-    EquationParser.EqType eqType;
     public double[] CacheY;
 
     public EquationData() {
@@ -38,14 +39,23 @@ public class EquationData {
         this.r = data.r;
         this.g = data.g;
         this.b = data.b;
-        this.yCache = data.yCache;
         this.step = data.step;
         this.xStart = data.xStart;
         this.startIndex = data.startIndex;
         this.size = data.size;
-        if (data.yCache != null) {
-            this.yCache = Arrays.copyOf(data.yCache, data.yCache.length);
-        }
+        this.isVisible = data.isVisible;
+        this.eqType = data.eqType;
+        //this.isPolar = data.isPolar;
+        this.thetaMin = data.thetaMin;
+        this.thetaMax = data.thetaMax;
+        this.tMin = data.tMin;
+        this.tMax = data.tMax;
+        this.yCache = data.yCache != null
+                ? Arrays.copyOf(data.yCache, data.yCache.length) : null;
+        this.CacheX = data.CacheX != null
+                ? Arrays.copyOf(data.CacheX, data.CacheX.length) : null;
+        this.CacheY = data.CacheY != null
+                ? Arrays.copyOf(data.CacheY, data.CacheY.length) : null;
     }
 
     public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
@@ -93,7 +103,7 @@ public class EquationData {
         for (int i = 0; i <= samples; i++) {
             double t = t0 + (t1 - t0) * i / (double) samples;
             // prefer parser-provided evaluator:
-            double p[] = this.parser.evaluateParametric(t);
+            double[] p = this.parser.evaluateParametric(t);
             double x, y;
             if (p != null && !Double.isNaN(p[0]) && !Double.isNaN(p[1])) {
                 x = p[0];
@@ -109,10 +119,6 @@ public class EquationData {
         this.CacheY = ys;
     }
 
-    public void setThetaRange(double min, double max) {
-        thetaMin = min;
-        thetaMax = max;
-    }
 
     public double getY(double graphX) {
         if (yCache == null) return Double.NaN;
@@ -133,18 +139,8 @@ public class EquationData {
         this.b = (int) (color.getBlue() * 255);
     }
 
-    public double calculateIntegral(double a, double b, int n) {
-        if (n % 2 != 0) n++; // Simpson's rule requires an even number of intervals
-        double h = (b - a) / n;
-        double sum = parser.evaluateExplicit(a) + parser.evaluateExplicit(b);
-
-        for (int i = 1; i < n; i++) {
-            double x = a + i * h;
-            double y = parser.evaluateExplicit(x);
-            // Odd indices get weight 4, even indices get weight 2
-            sum += (i % 2 != 0) ? 4 * y : 2 * y;
-        }
-        return sum * (h / 3.0);
+    // Replace the field with a method:
+    public boolean isPolar() {
+        return eqType == EquationParser.EqType.Polar;
     }
-
 }

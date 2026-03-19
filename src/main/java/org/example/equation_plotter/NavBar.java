@@ -96,7 +96,7 @@ public class NavBar {
         Map<String, EquationData> explicitOnly = activeEqns.entrySet().stream()
                 .filter(e -> e.getValue().parser != null
                         && !e.getValue().parser.eqtype.equals(EquationParser.EqType.Implicit)
-                        && !e.getValue().isPolar)
+                        && !e.getValue().isPolar())
                 .collect(java.util.stream.Collectors.toMap(
                         Map.Entry::getKey, Map.Entry::getValue));
 
@@ -104,7 +104,7 @@ public class NavBar {
             Alert alert = new Alert(Alert.AlertType.WARNING);
             alert.setTitle("No Compatible Equations");
             alert.setHeaderText(null);
-            alert.setContentText("Derivative calculator only works on explicit equations (e.g. x^2).\nImplicit and polar equations are not supported.");
+            alert.setContentText("Derivative calculator only works on explicit equations (e.g. x^2).\nImplicit , polar and parametric equations are not supported.");
             alert.getDialogPane().setPrefSize(360, 160);
             DialogPane dp = alert.getDialogPane();
             dp.getStylesheets().add(Objects.requireNonNull(getClass().getResource(

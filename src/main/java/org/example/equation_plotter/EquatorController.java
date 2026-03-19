@@ -93,8 +93,10 @@ public class EquatorController {
         graph_container.layoutBoundsProperty().addListener((obs, oldB, newB) -> {
             clip.setWidth(newB.getWidth());
             clip.setHeight(newB.getHeight());
-            graphPlotter.refreshAllData();
-            graphPlotter.draw();
+            if (newB.getWidth() > 0 && newB.getHeight() > 0) {
+                graphPlotter.refreshAllData();
+                graphPlotter.draw();
+            }
         });
 
         addEquation();
@@ -362,8 +364,10 @@ public class EquatorController {
         EquationData ed = graphPlotter.getEquation(eqId);
         if (ed == null) return;
 
+
         HBox rangeBox = new HBox(8);
         rangeBox.setAlignment(Pos.CENTER_LEFT);
+
 
         String captionLabel = (ed.eqType == EquationParser.EqType.Parametric)
                 ? "t range:" : "θ range:";
@@ -385,35 +389,47 @@ public class EquatorController {
             try {
                 double min = parseAngle(minField.getText());
                 double max = parseAngle(maxField.getText());
-                if (ed.eqType == EquationParser.EqType.Polar) {
-                    ed.thetaMin = min;
-                    ed.thetaMax = max;
-                } else if (ed.eqType == EquationParser.EqType.Parametric) {
-                    ed.tMin = min;
-                    ed.tMax = max;
-                }
-                graphPlotter.refreshEquationData(eqId);
-                graphPlotter.draw();
-                Platform.runLater(() -> {
+
+
+                if (ed != null) {
+                    if (ed.eqType == EquationParser.EqType.Polar) {
+                        ed.thetaMin = min;
+                        ed.thetaMax = max;
+                    } else if (ed.eqType == EquationParser.EqType.Parametric) {
+                        ed.tMin = min;
+                        ed.tMax = max;
+                    }
+
+
                     graphPlotter.refreshEquationData(eqId);
                     graphPlotter.draw();
-                });
+                    Platform.runLater(() -> {
+                        graphPlotter.refreshEquationData(eqId);
+                        graphPlotter.draw();
+                    });
+                }
             } catch (Exception ignored) {
             }
         };
 
-        minField.textProperty().addListener((obs, o, n) -> {
+        // key released -> debounce
+        minField.textProperty().addListener((obs, oldVal, newVal) -> {
             debounce.setOnFinished(e -> applyRange.run());
             debounce.playFromStart();
         });
-        maxField.textProperty().addListener((obs, o, n) -> {
+
+        maxField.textProperty().addListener((obs, oldVal, newVal) -> {
             debounce.setOnFinished(e -> applyRange.run());
             debounce.playFromStart();
         });
+
+        // enter pressed ->update
         minField.setOnAction(e -> applyRange.run());
         maxField.setOnAction(e -> applyRange.run());
-        minField.focusedProperty().addListener((obs, o, n) -> {
-            if (!n) applyRange.run();
+
+        // apply also on focus lost (safer)
+        minField.focusedProperty().addListener((obs, oldv, newv) -> {
+            if (!newv) applyRange.run();
         });
         maxField.focusedProperty().addListener((obs, o, n) -> {
             if (!n) applyRange.run();
@@ -421,6 +437,9 @@ public class EquatorController {
 
         String middle = (ed.eqType == EquationParser.EqType.Parametric) ? "≤ t ≤" : "≤ θ ≤";
         rangeBox.getChildren().addAll(caption, minField, new Label(middle), maxField);
+
+        // remove any existing polar row for this equation (optional simple approach)
+        // In your code 'sliderBox' is per-equation; caller should ensure only one polar control is appended.
         container.getChildren().add(rangeBox);
     }
 
@@ -691,8 +710,8 @@ public class EquatorController {
                                         "&& typeof window.javaConnector !== 'undefined'");
                         if (Boolean.TRUE.equals(ready)) {
                             wv.getEngine().executeScript(
-                                    "window.mathField.latex('" + safe + "');" +
-                                            "if (window.javaConnector) { window.javaConnector.updateMath('" + safe + "'); }");
+                                    "window.mathField.latex('" + safe + "');"
+                            );
                             poller.stop();
                         }
                     } catch (Exception ex) {
@@ -733,5 +752,9 @@ public class EquatorController {
 
     public Scene getScene() {
         return mainBorderPane.getScene();
+    }
+
+    public GraphPlotter getGraphPlotter() {
+        return graphPlotter;
     }
 }

@@ -12,9 +12,9 @@ public class EquationParser {
     private final Map<Character, Parameter> parameters = new HashMap<>();
     private Node mathExpr;
     private Node polarExpr;
-    public EqType eqtype = EqType.Explicit;
     private Node paramXExpr;
     private Node paramYExpr;
+    public EqType eqtype = EqType.Explicit;
     private Node limitExpr;
     private boolean isLinearInY = false;
     private boolean hasLimit = false;
@@ -43,15 +43,29 @@ public class EquationParser {
                 hasLimit = true;
             }
 
-            if (mathPart.contains("t") && mathPart.contains(",") && mathPart.startsWith("(") && mathPart.endsWith(")")) {
+            if (mathPart.contains("t") && mathPart.contains(",")
+                    && mathPart.startsWith("(") && mathPart.endsWith(")")) {
                 eqtype = EqType.Parametric;
-                mathPart = mathPart.replace("(", "").replace(")", "");
-                String[] parts = mathPart.split(",");
 
-                this.paramX = parts[0].replace("t", "x");
-                this.paramY = parts[1].replace("t", "x");
+                // Find top-level comma BEFORE removing parens
+                int depth = 0, splitAt = -1;
+                for (int i = 0; i < mathPart.length(); i++) {
+                    char c = mathPart.charAt(i);
+                    if (c == '(') depth++;
+                    else if (c == ')') depth--;
+                    else if (c == ',' && depth == 1) {
+                        splitAt = i;
+                        break;
+                    }
+                }
+                if (splitAt == -1) throw new RuntimeException("Invalid parametric");
+
+                // Extract between outer parens using splitAt
+                this.paramX = mathPart.substring(1, splitAt).trim().replace("t", "x");
+                this.paramY = mathPart.substring(splitAt + 1, mathPart.length() - 1).trim().replace("t", "x");
 
                 System.out.println("Parametric: " + this.paramX + ", " + this.paramY + " " + eqtype);
+
             } else if (mathPart.matches("^r\\s*=.*")) {
                 eqtype = EqType.Polar;
                 // extract right-hand side after r=
@@ -98,10 +112,6 @@ public class EquationParser {
         }
     }
 
-    public boolean isImplicit() {
-        return eqtype == EqType.Implicit;
-    }
-
     private void checkLinearity() {
         if (mathExpr == null) return;
         double v0 = mathExpr.eval(1.23, 0);
@@ -117,6 +127,7 @@ public class EquationParser {
             }
         }
     }
+
 
     private Points points;
 
@@ -188,6 +199,12 @@ public class EquationParser {
         }
     }
 
+    public EqType getEqType() {
+        return eqtype;
+    }
+
+    public enum EqType {Implicit, Explicit, Polar, Parametric}
+
     public double[] evaluateParametric(double t) {
         double[] nan = {Double.NaN, Double.NaN};
         if (!isValid) return nan;
@@ -204,10 +221,6 @@ public class EquationParser {
         }
     }
 
-    public EqType getEqType() {
-        return eqtype;
-    }
-
     public boolean isValid() {
         return isValid;
     }
@@ -222,9 +235,6 @@ public class EquationParser {
                 .replace(",", " && ")
                 .replace("and", " && ");
     }
-
-
-    public enum EqType {Implicit, Explicit, Polar, Parametric}
 
     // --- NATIVE AST INTERFACES ---
     @FunctionalInterface

@@ -51,7 +51,7 @@ public class derivativeCalc {
 
     // ── Derivative calculation ────────────────────────────────────────────────
     public void calculateDer() {
-        if (eqn.parser == null || eqn.parser.isImplicit()) return;
+        if (eqn.parser == null || eqn.eqType != EquationParser.EqType.Explicit) return;
 
         String rawInput = addBracketsToTrig(eqn.raw);
         String derivativeString = SymbolicMathUtils.getDerivative(rawInput);

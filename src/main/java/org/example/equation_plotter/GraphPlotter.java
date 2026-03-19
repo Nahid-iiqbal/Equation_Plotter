@@ -49,10 +49,6 @@ public class GraphPlotter extends StackPane {
     // ── isDirty: only redraw grid when view state changes ────────────────────
     private boolean isDirty = true;
 
-    // ── Resize compensation: keep graph center locked when canvas resizes ─────
-    private double lastWidth = -1;
-    private double lastHeight = -1;
-
     public GraphPlotter(double width, double height) {
         setPrefSize(width, height);
 
@@ -300,12 +296,6 @@ public class GraphPlotter extends StackPane {
         double w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
 
-        // Compensate for canvas resize so the graph center stays locked
-        if (w > 0 && h > 0) {
-            lastWidth = w;
-            lastHeight = h;
-        }
-
         if (!isDirty) return;
         isDirty = false;
 
@@ -498,11 +488,9 @@ public class GraphPlotter extends StackPane {
             if (!equation.isVisible) continue;
             if (equation.parser.eqtype == EquationParser.EqType.Implicit) {
                 drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
-            } else if (equation.eqType == EquationParser.EqType.Polar
-                    || equation.parser.eqtype == EquationParser.EqType.Polar) {
+            } else if (equation.eqType == EquationParser.EqType.Polar || equation.parser.eqtype == EquationParser.EqType.Polar) {
                 drawFunction_Polar(gc, w, h, equation);
-            } else if (equation.eqType == EquationParser.EqType.Parametric
-                    || equation.parser.eqtype == EquationParser.EqType.Parametric) {
+            } else if (equation.eqType == EquationParser.EqType.Parametric || equation.parser.eqtype == EquationParser.EqType.Parametric) {
                 drawFunction_Parametric(gc, w, h, equation);
             } else {
                 drawFunction_Explicit(gc, w, h, equation);
@@ -633,18 +621,20 @@ public class GraphPlotter extends StackPane {
         draw();
     }
 
-    public void addEquationToHashmap(String id, String fullInput, Color color,
-                                     EquationParser.EqType eqType) {
+    // new overload:
+    public void addEquationToHashmap(String id, String fullInput, Color color, EquationParser.EqType eqType) {
         EquationData data = new EquationData();
         data.raw = fullInput;
         data.parser = new EquationParser(fullInput);
         data.setColor(color);
+//        if (isPolar) data.eqType = EquationParser.EqType.Polar;             // new field in EquationData
         data.eqType = eqType;
+        // default theta and t range:
         data.thetaMin = 0;
         data.thetaMax = 2 * Math.PI;
         data.tMin = 0;
         data.tMax = 1.0;
-
+        // clear caches & active tasks (existing code)
         implicitCache.remove(id);
         if (activeTasks.containsKey(id)) {
             activeTasks.get(id).cancel(true);
@@ -882,6 +872,8 @@ public class GraphPlotter extends StackPane {
         gc.beginPath();
         gc.setStroke(data.color);
         gc.setLineWidth(2.5);
+
+        // If we have cached X/Y arrays use them (fast)
         if (data.CacheX != null && data.CacheY != null) {
             boolean first = true;
             for (int i = 0; i < data.CacheX.length; i++) {
@@ -899,6 +891,7 @@ public class GraphPlotter extends StackPane {
             }
             gc.stroke();
         }
+
     }
 
     public void toggleGrid() {
