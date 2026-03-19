@@ -5,6 +5,7 @@ import javafx.scene.paint.Color;
 import java.util.Arrays;
 
 public class EquationData {
+    public boolean isPolar;
     String raw;
     EquationParser parser;
     Color color;
@@ -17,12 +18,14 @@ public class EquationData {
     private int size;
     public boolean isVisible = true;
     // new flags for polar
-    public boolean isPolar = false;
+//    public boolean isPolar = false;
     public double thetaMin = 0;
+    public double tMin = 0.0;
     public double thetaMax = 2 * Math.PI;
-
-    // caches for polar
+    public double tMax = 1.0;
+    // caches for polar and parametrix
     public double[] CacheX;
+    EquationParser.EqType eqType;
     public double[] CacheY;
 
     public EquationData() {
@@ -45,9 +48,8 @@ public class EquationData {
         }
     }
 
-
     public void buildCacheExplicit(double visibleMinX, double visibleMaxX, double width) {
-        if (parser.isImplicit()) return;
+        if (parser.eqtype == EquationParser.EqType.Implicit) return;
         double visibleWidth = visibleMaxX - visibleMinX;
         double bufferWidth = visibleWidth * 3;
         size = (int) (width * 3 * 2);
@@ -62,7 +64,7 @@ public class EquationData {
     }
 
     public void buildCachePolar(double thetaMin, double thetaMax, double width) {
-        if (!isPolar || parser == null) return;
+        if (eqType != EquationParser.EqType.Polar || parser == null) return;
 
         // number of samples: base on pixel width * factor for smoothness
         int samples = Math.max(200, (int) (width * 1.5));
@@ -81,6 +83,30 @@ public class EquationData {
                 CacheY[i] = r * Math.sin(t);
             }
         }
+    }
+
+    public void buildCacheParametric(double t0, double t1, double width) {
+        // determine number of samples relative to pixel width (oversample a bit)
+        int samples = Math.max(300, (int) (width * 1.5));
+        double[] xs = new double[samples + 1];
+        double[] ys = new double[samples + 1];
+        for (int i = 0; i <= samples; i++) {
+            double t = t0 + (t1 - t0) * i / (double) samples;
+            // prefer parser-provided evaluator:
+            double p[] = this.parser.evaluateParametric(t);
+            double x, y;
+            if (p != null && !Double.isNaN(p[0]) && !Double.isNaN(p[1])) {
+                x = p[0];
+                y = p[1];
+                xs[i] = x;
+                ys[i] = y;
+            } else {
+                xs[i] = Double.NaN;
+                ys[i] = Double.NaN;
+            }
+        }
+        this.CacheX = xs;
+        this.CacheY = ys;
     }
 
     public void setThetaRange(double min, double max) {

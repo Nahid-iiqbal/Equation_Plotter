@@ -9,11 +9,10 @@
     src: url('fonts/Megrim-Regular.ttf');
 }
 
-/* --- The Left Sidebar (25% Area) --- */
 .left-panel {
-    -fx-background-color: #252526; /* Slightly lighter for contrast */
+    -fx-background-color: #252526;
     -fx-border-color: #3e3e42;
-    -fx-border-width: 0 1px 0 0; /* Right border only */
+    -fx-border-width: 0 1px 0 0;
     -fx-padding: 15;
 }
 
@@ -389,4 +388,54 @@
 .nav-holder .button:hover {
     -fx-background-color: #00FFFF;
     -fx-text-fill: #1e1e1e; /* Dark text on hover */
+}
+
+.sidebar {
+    -fx-background-color: rgba(15, 15, 25, 0.75);
+    -fx-border-color: rgba(0, 255, 255, 0.15);
+    -fx-border-width: 0 1 0 0; /* right border only */
+    -fx-effect: dropshadow(gaussian, rgba(0, 255, 255, 0.08), 20, 0.3, 4, 0);
+}
+
+.equation-card {
+    -fx-background-color: rgba(30, 30, 50, 0.9);
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-color: rgba(0, 255, 255, 0.0);
+    -fx-border-width: 1;
+    -fx-transition: all 0.2s;
+}
+
+.equation-card:hover {
+    -fx-border-color: rgba(0, 255, 255, 0.4);
+    -fx-effect: dropshadow(gaussian, rgba(0, 255, 255, 0.2), 12, 0.4, 0, 0);
+}
+
+.slider .track {
+    -fx-background-color: rgba(0, 255, 255, 0.1);
+    -fx-border-color: rgba(0, 255, 255, 0.3);
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+}
+
+.slider .thumb {
+    -fx-background-color: #00FFFF;
+    -fx-background-radius: 50;
+    -fx-effect: dropshadow(gaussian, #00FFFF, 8, 0.6, 0, 0);
+}
+
+.slider:focused .thumb {
+    -fx-background-color: #FFFFFF;
+}
+
+.compact-dialog {
+    -fx-min-width: 0;
+    -fx-min-height: 0;
+    -fx-pref-width: 360px;
+}
+
+.compact-dialog .content {
+    -fx-padding: 8 12 8 12;
+    -fx-font-size: 14px;
+    -fx-text-fill: #00ffff;
 }

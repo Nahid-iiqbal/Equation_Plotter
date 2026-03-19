@@ -10,8 +10,11 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.Duration;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class integralCalc {
     private final GraphPlotter localPlotter;
@@ -21,19 +24,20 @@ public class integralCalc {
     // ✅ ComboBoxes now hold EquationData directly — no string lookup needed
     private final ComboBox<EquationData> sel1 = new ComboBox<>();
     private final ComboBox<EquationData> sel2 = new ComboBox<>();
-    private final ToggleGroup axisGroup = new ToggleGroup();
     private final RadioButton xBtn = new RadioButton("X-axis");
     private final RadioButton yBtn = new RadioButton("Y-axis");
-    // ✅ Keep a reference to the snapshot taken at open time
-    private final Map<String, EquationData> frozenEquations;
     private EquationData eq1, eq2;
+
+    private final javafx.animation.PauseTransition refreshDebounce =
+            new javafx.animation.PauseTransition(Duration.millis(300));
 
     public integralCalc(EquationData initial) {
         this.eq1 = initial;
         this.localPlotter = new GraphPlotter(900, 700);
 
         // ✅ Snapshot the main map once — we never touch it again after this
-        this.frozenEquations = Map.copyOf(GraphPlotter.getCurrentEquations());
+        // ✅ Keep a reference to the snapshot taken at open time
+        Map<String, EquationData> frozenEquations = Map.copyOf(GraphPlotter.getCurrentEquations());
 
         // Populate ComboBoxes with EquationData objects
         sel1.getItems().addAll(frozenEquations.values());
@@ -42,7 +46,7 @@ public class integralCalc {
         // ✅ Add a "None" sentinel object for sel2
         EquationData noneOption = new EquationData();
         noneOption.raw = "None";
-        sel2.getItems().add(0, noneOption);
+        sel2.getItems().addFirst(noneOption);
 
         // ✅ Display the raw expression string in the dropdown
         javafx.util.StringConverter<EquationData> converter = new javafx.util.StringConverter<>() {
@@ -66,36 +70,10 @@ public class integralCalc {
                 .ifPresent(sel1::setValue);
         sel2.getSelectionModel().select(0); // "None"
 
+        ToggleGroup axisGroup = new ToggleGroup();
         xBtn.setToggleGroup(axisGroup);
         yBtn.setToggleGroup(axisGroup);
         xBtn.setSelected(true);
-    }
-
-    public void show() {
-        Stage stage = new Stage();
-        stage.setTitle("Integral & Area Analyzer");
-
-        resultLabel.getStyleClass().add("result-box-top");
-        VBox hud = new VBox(resultLabel);
-        hud.setPickOnBounds(false);
-        hud.setPadding(new Insets(20));
-
-        VBox sidebar = createSidebar();
-        HBox nav = createNav();
-
-        StackPane center = new StackPane(localPlotter, hud);
-        BorderPane root = new BorderPane();
-        root.setCenter(center);
-        root.setRight(sidebar);
-        root.setBottom(nav);
-
-        Scene scene = new Scene(root, 1200, 800);
-        scene.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
-        stage.setScene(scene);
-
-        // ✅ Scene is attached now — localPlotter has real dimensions, safe to draw
-        stage.show();
-        refresh();
     }
 
     private VBox createSidebar() {
@@ -133,46 +111,109 @@ public class integralCalc {
         return box;
     }
 
+    public void show() {
+        Stage stage = new Stage();
+        stage.setTitle("Integral & Area Analyzer");
+
+        resultLabel.getStyleClass().add("result-box-top");
+        VBox hud = new VBox(resultLabel);
+        hud.setPickOnBounds(false);
+        hud.setPadding(new Insets(20));
+
+        VBox sidebar = createSidebar();
+        HBox nav = createNav();
+
+        StackPane center = new StackPane(localPlotter, hud);
+        BorderPane root = new BorderPane();
+        root.setCenter(center);
+        root.setRight(sidebar);
+        root.setBottom(nav);
+
+        Scene scene = new Scene(root, 1200, 800);
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("style.css")).toExternalForm());
+        stage.setScene(scene);
+
+        // ✅ Scene is attached now — localPlotter has real dimensions, safe to draw
+        stage.show();
+        refresh();
+    }
+
     private void refresh() {
-        // ✅ Get eq1/eq2 directly from the ComboBox selection — no map lookup, no NullPointerException
+        // Debounce — wait 300ms after last keystroke before recalculating
+        refreshDebounce.setOnFinished(e -> doRefresh());
+        refreshDebounce.playFromStart();
+    }
+
+    private void doRefresh() {
         this.eq1 = sel1.getValue();
         EquationData sel2Val = sel2.getValue();
         this.eq2 = (sel2Val == null || "None".equals(sel2Val.raw)) ? null : sel2Val;
 
-        try {
-            String lowTxt = lowerField.getText().trim();
-            String upTxt = upperField.getText().trim();
+        String lowTxt = lowerField.getText().trim();
+        String upTxt = upperField.getText().trim();
 
-            if (lowTxt.isEmpty() || upTxt.isEmpty()
-                    || lowTxt.equals("-") || upTxt.equals("-") || lowTxt.equals(".")) {
-                // ✅ Only touch localPlotter — main window's map is NEVER cleared here
-                localPlotter.setPostDrawAction(null);
-                rebuildLocalPlotter();
-                localPlotter.draw();
-                resultLabel.setText("∫ ≈ 0.0000");
-                return;
-            }
-
-            double a = Double.parseDouble(lowTxt);
-            double b = Double.parseDouble(upTxt);
-            boolean isX = xBtn.isSelected();
-
-            if (eq1 == null) return;
-
-            double area = calculateSimpson(a, b, isX);
-            resultLabel.setText(String.format("Area ≈ %.6f", Math.abs(area)));
-
-            final double fa = a, fb = b;
-            final boolean fx = isX;
-            localPlotter.setPostDrawAction(() -> drawAdvancedShading(fa, fb, fx));
-
+        // Guard — incomplete input, just redraw without shading
+        if (eq1 == null
+                || lowTxt.isEmpty() || upTxt.isEmpty()
+                || lowTxt.equals("-") || upTxt.equals("-")
+                || lowTxt.equals(".") || upTxt.equals(".")) {
+            localPlotter.setPostDrawAction(null);
             rebuildLocalPlotter();
             localPlotter.draw();
-
-        } catch (NumberFormatException ignored) {
-            rebuildLocalPlotter();
-            localPlotter.draw();
+            resultLabel.setText("∫ ≈ 0.0000");
+            return;
         }
+
+        double a, b;
+        try {
+            a = Double.parseDouble(lowTxt);
+            b = Double.parseDouble(upTxt);
+        } catch (NumberFormatException ignored) {
+            localPlotter.setPostDrawAction(null);
+            rebuildLocalPlotter();
+            localPlotter.draw();
+            return;
+        }
+
+        boolean isX = xBtn.isSelected();
+
+        // Show a loading state while Simpson runs off-thread
+        resultLabel.setText("calculating...");
+
+        Thread t = getThread(a, b, isX);
+        t.start();
+    }
+
+    private @NotNull Thread getThread(double a, double b, boolean isX) {
+        final double fa = a, fb = b;
+        final boolean fx = isX;
+
+        // Run Simpson off the UI thread so the window stays responsive
+        javafx.concurrent.Task<Double> calcTask = new javafx.concurrent.Task<>() {
+            @Override
+            protected Double call() {
+                return calculateSimpson(fa, fb, fx);
+            }
+        };
+
+        calcTask.setOnSucceeded(event -> {
+            double area = calcTask.getValue();
+            resultLabel.setText(String.format("Area ≈ %.6f", Math.abs(area)));
+            localPlotter.setPostDrawAction(() -> drawAdvancedShading(fa, fb, fx));
+            rebuildLocalPlotter();
+            localPlotter.draw();
+        });
+
+        calcTask.setOnFailed(event -> {
+            resultLabel.setText("Error");
+            localPlotter.setPostDrawAction(null);
+            rebuildLocalPlotter();
+            localPlotter.draw();
+        });
+
+        Thread t = new Thread(calcTask);
+        t.setDaemon(true);
+        return t;
     }
 
     /**
@@ -203,8 +244,8 @@ public class integralCalc {
         EquationData localEq2 = (eq2 != null) ? localPlotter.getEquation("s") : null;
         if (localEq1 == null) return;
 
-        boolean imp1 = localEq1.parser.isImplicit();
-        boolean imp2 = localEq2 != null && localEq2.parser.isImplicit();
+        boolean imp1 = (localEq1.parser.eqtype == EquationParser.EqType.Implicit);
+        boolean imp2 = localEq2 != null && (localEq2.parser.eqtype == EquationParser.EqType.Implicit);
 
         double start = Math.min(a, b);
         double end = Math.max(a, b);
@@ -213,35 +254,46 @@ public class integralCalc {
         double yMin = cY - (h / 2) / s;
         double yMax = cY + (h / 2) / s;
 
+        // ── Gradient: fade from curve color (top) to transparent (bottom) ──────────
+        javafx.scene.paint.Color baseColor = localEq1.color;
+        javafx.scene.paint.LinearGradient shadingGradient = new javafx.scene.paint.LinearGradient(
+                0, 0, 0, h,
+                false,
+                javafx.scene.paint.CycleMethod.NO_CYCLE,
+                new javafx.scene.paint.Stop(0, baseColor.deriveColor(0, 1, 1, 0.55)),
+                new javafx.scene.paint.Stop(1, baseColor.deriveColor(0, 1, 1, 0.08))
+        );
+
+        // ── Boundary stroke style ────────────────────────────────────────────────
+        javafx.scene.paint.Color boundaryColor = baseColor.deriveColor(0, 1.1, 1.1, 0.9);
+
         gc.save();
-        gc.setFill(localEq1.color.deriveColor(0, 1, 1, 0.35));
 
         if (isX) {
-            // ── Scan pixel columns between x=start and x=end ──────────────────────
-            // For each column: find eq1's y (top) and eq2's y / x-axis (bottom)
-            // then fillRect for the vertical strip.
+            // ── Step 1: Collect top/bottom pixel edges for every column ─────────
             int colStart = (int) Math.max(0, Math.floor((start - cX) * s + w / 2));
             int colEnd = (int) Math.min(w - 1, Math.ceil((end - cX) * s + w / 2));
 
+            double[] pyTops = new double[colEnd - colStart + 1];
+            double[] pyBots = new double[colEnd - colStart + 1];
+            java.util.Arrays.fill(pyTops, Double.NaN);
+            java.util.Arrays.fill(pyBots, Double.NaN);
+
             for (int col = colStart; col <= colEnd; col++) {
                 double gx = cX + (col - w / 2) / s;
-
                 double topGy, botGy;
 
                 if (imp1) {
-                    // Implicit eq1: find all y-roots at this x, use max and min
                     java.util.List<Double> roots = solveForY(localEq1.parser, gx, yMin, yMax);
                     if (roots.isEmpty()) continue;
                     topGy = roots.stream().mapToDouble(Double::doubleValue).max().getAsDouble();
                     botGy = roots.stream().mapToDouble(Double::doubleValue).min().getAsDouble();
                 } else {
-                    // Explicit eq1: y = f(x) is the top edge
                     topGy = localEq1.parser.evaluateExplicit(gx);
                     if (Double.isNaN(topGy)) continue;
 
-                    // Bottom edge: eq2 or x-axis (graph y=0)
                     if (localEq2 == null) {
-                        botGy = 0; // x-axis
+                        botGy = 0;
                     } else if (imp2) {
                         java.util.List<Double> roots = solveForY(localEq2.parser, gx, yMin, yMax);
                         botGy = roots.isEmpty() ? 0
@@ -252,33 +304,98 @@ public class integralCalc {
                     }
                 }
 
-                // Convert graph-y to pixel-y (higher graph-y = smaller pixel-y)
                 double pyTop = h / 2 - (Math.max(topGy, botGy) - cY) * s;
                 double pyBot = h / 2 - (Math.min(topGy, botGy) - cY) * s;
-                pyTop = Math.max(pyTop, 0);
-                pyBot = Math.min(pyBot, h);
-                if (pyBot > pyTop) gc.fillRect(col, pyTop, 1, pyBot - pyTop);
+                pyTops[col - colStart] = Math.max(pyTop, 0);
+                pyBots[col - colStart] = Math.min(pyBot, h);
             }
 
+            // ── Step 2: Fill with gradient using a clipping polygon ─────────────
+            // Build a closed polygon: top edge left→right, bottom edge right→left
+            gc.beginPath();
+            boolean started = false;
+            for (int i = 0; i < pyTops.length; i++) {
+                if (Double.isNaN(pyTops[i])) continue;
+                if (!started) {
+                    gc.moveTo(colStart + i, pyTops[i]);
+                    started = true;
+                } else gc.lineTo(colStart + i, pyTops[i]);
+            }
+            for (int i = pyBots.length - 1; i >= 0; i--) {
+                if (Double.isNaN(pyBots[i])) continue;
+                gc.lineTo(colStart + i, pyBots[i]);
+            }
+            gc.closePath();
+            gc.setFill(shadingGradient);
+            gc.fill();
+
+            // ── Step 3: Top boundary stroke (along the curve) ───────────────────
+            gc.setStroke(boundaryColor);
+            gc.setLineWidth(1.8);
+            gc.setLineDashes(null);
+            gc.beginPath();
+            started = false;
+            for (int i = 0; i < pyTops.length; i++) {
+                if (Double.isNaN(pyTops[i])) {
+                    started = false;
+                    continue;
+                }
+                if (!started) {
+                    gc.moveTo(colStart + i, pyTops[i]);
+                    started = true;
+                } else gc.lineTo(colStart + i, pyTops[i]);
+            }
+            gc.stroke();
+
+            // ── Step 4: Bottom boundary stroke (eq2 or x-axis) ──────────────────
+            // Use a dimmer stroke for the x-axis / eq2 bound
+            gc.setStroke(localEq2 != null ? localEq2.color.deriveColor(0, 1, 1, 0.8)
+                    : baseColor.deriveColor(0, 0.5, 0.8, 0.5));
+            gc.setLineWidth(1.2);
+            gc.beginPath();
+            started = false;
+            for (int i = 0; i < pyBots.length; i++) {
+                if (Double.isNaN(pyBots[i])) {
+                    started = false;
+                    continue;
+                }
+                if (!started) {
+                    gc.moveTo(colStart + i, pyBots[i]);
+                    started = true;
+                } else gc.lineTo(colStart + i, pyBots[i]);
+            }
+            gc.stroke();
+
+            // ── Step 5: Vertical limit lines at x=a and x=b ─────────────────────
+            gc.setStroke(baseColor.deriveColor(0, 1, 1, 0.7));
+            gc.setLineWidth(1.2);
+            gc.setLineDashes(6, 4);
+            for (double limit : new double[]{start, end}) {
+                double px = (limit - cX) * s + w / 2;
+                if (px >= 0 && px <= w) gc.strokeLine(px, 0, px, h);
+            }
+            gc.setLineDashes(null); // reset
+
         } else {
-            // ── Scan pixel rows between y=start and y=end ─────────────────────────
-            // For each row: find the horizontal extent of eq1 at that y-value.
+            // ── Step 1: Collect left/right pixel edges for every row ─────────────
             int rowStart = (int) Math.max(0, Math.floor(h / 2 - (end - cY) * s));
             int rowEnd = (int) Math.min(h - 1, Math.ceil(h / 2 - (start - cY) * s));
 
+            double[] pxLefts = new double[rowEnd - rowStart + 1];
+            double[] pxRights = new double[rowEnd - rowStart + 1];
+            java.util.Arrays.fill(pxLefts, Double.NaN);
+            java.util.Arrays.fill(pxRights, Double.NaN);
+
             for (int row = rowStart; row <= rowEnd; row++) {
                 double gy = cY + (h / 2 - row) / s;
-
                 double leftGx, rightGx;
 
                 if (imp1) {
-                    // Implicit: find all x-roots at this y, shade between leftmost and rightmost
                     java.util.List<Double> roots = solveForX(localEq1.parser, gy, xMin, xMax);
                     if (roots.isEmpty()) continue;
                     rightGx = roots.stream().mapToDouble(Double::doubleValue).max().getAsDouble();
                     leftGx = roots.stream().mapToDouble(Double::doubleValue).min().getAsDouble();
                 } else {
-                    // Explicit: find x where f(x) = gy via sign-change scan
                     double xStep = (xMax - xMin) / w;
                     double prevGx = xMin;
                     double prevDy = localEq1.parser.evaluateExplicit(prevGx) - gy;
@@ -296,14 +413,12 @@ public class integralCalc {
                         if (!Double.isNaN(prevDy) && prevDy * dy <= 0) {
                             double t = Math.abs(prevDy) / (Math.abs(prevDy) + Math.abs(dy) + 1e-15);
                             rightGx = prevGx + t * (gx - prevGx);
-                            // keep looking for the furthest crossing
                         }
                         prevGx = gx;
                         prevDy = dy;
                     }
                     if (Double.isNaN(rightGx)) continue;
 
-                    // Left bound: eq2's crossing at this y, or the y-axis (x=0)
                     leftGx = 0;
                     if (localEq2 != null) {
                         if (imp2) {
@@ -317,10 +432,81 @@ public class integralCalc {
                     }
                 }
 
-                double pxLeft = Math.max(0, (Math.min(leftGx, rightGx) - cX) * s + w / 2);
-                double pxRight = Math.min(w, (Math.max(leftGx, rightGx) - cX) * s + w / 2);
-                if (pxRight > pxLeft) gc.fillRect(pxLeft, row, pxRight - pxLeft, 1);
+                pxLefts[row - rowStart] = Math.max(0, (Math.min(leftGx, rightGx) - cX) * s + w / 2);
+                pxRights[row - rowStart] = Math.min(w, (Math.max(leftGx, rightGx) - cX) * s + w / 2);
             }
+
+            // ── Step 2: Fill with gradient (horizontal: left=opaque, right=transparent)
+            // For Y-axis integration we use a horizontal gradient instead
+            javafx.scene.paint.LinearGradient hGradient = new javafx.scene.paint.LinearGradient(
+                    0, 0, w, 0,
+                    false,
+                    javafx.scene.paint.CycleMethod.NO_CYCLE,
+                    new javafx.scene.paint.Stop(0, baseColor.deriveColor(0, 1, 1, 0.55)),
+                    new javafx.scene.paint.Stop(1, baseColor.deriveColor(0, 1, 1, 0.08))
+            );
+
+            gc.beginPath();
+            boolean started = false;
+            for (int i = 0; i < pxLefts.length; i++) {
+                if (Double.isNaN(pxLefts[i])) continue;
+                if (!started) {
+                    gc.moveTo(pxLefts[i], rowStart + i);
+                    started = true;
+                } else gc.lineTo(pxLefts[i], rowStart + i);
+            }
+            for (int i = pxRights.length - 1; i >= 0; i--) {
+                if (Double.isNaN(pxRights[i])) continue;
+                gc.lineTo(pxRights[i], rowStart + i);
+            }
+            gc.closePath();
+            gc.setFill(hGradient);
+            gc.fill();
+
+            // ── Step 3: Right boundary stroke (along the curve) ─────────────────
+            gc.setStroke(boundaryColor);
+            gc.setLineWidth(1.8);
+            gc.beginPath();
+            started = false;
+            for (int i = 0; i < pxRights.length; i++) {
+                if (Double.isNaN(pxRights[i])) {
+                    started = false;
+                    continue;
+                }
+                if (!started) {
+                    gc.moveTo(pxRights[i], rowStart + i);
+                    started = true;
+                } else gc.lineTo(pxRights[i], rowStart + i);
+            }
+            gc.stroke();
+
+            // ── Step 4: Left boundary stroke (eq2 or y-axis) ────────────────────
+            gc.setStroke(localEq2 != null ? localEq2.color.deriveColor(0, 1, 1, 0.8)
+                    : baseColor.deriveColor(0, 0.5, 0.8, 0.5));
+            gc.setLineWidth(1.2);
+            gc.beginPath();
+            started = false;
+            for (int i = 0; i < pxLefts.length; i++) {
+                if (Double.isNaN(pxLefts[i])) {
+                    started = false;
+                    continue;
+                }
+                if (!started) {
+                    gc.moveTo(pxLefts[i], rowStart + i);
+                    started = true;
+                } else gc.lineTo(pxLefts[i], rowStart + i);
+            }
+            gc.stroke();
+
+            // ── Step 5: Horizontal limit lines at y=a and y=b ───────────────────
+            gc.setStroke(baseColor.deriveColor(0, 1, 1, 0.7));
+            gc.setLineWidth(1.2);
+            gc.setLineDashes(6, 4);
+            for (double limit : new double[]{start, end}) {
+                double py = h / 2 - (limit - cY) * s;
+                if (py >= 0 && py <= h) gc.strokeLine(0, py, w, py);
+            }
+            gc.setLineDashes(null); // reset
         }
 
         gc.restore();
@@ -397,12 +583,11 @@ public class integralCalc {
     private double calculateSimpson(double a, double b, boolean isX) {
         if (eq1 == null || eq1.parser == null) return 0;
 
-        int n = 10000;
-        if (n % 2 != 0) n++;
+        int n = 1000;
         double h = (b - a) / n;
 
-        boolean eq1Implicit = eq1.parser.isImplicit();
-        boolean eq2Implicit = eq2 != null && eq2.parser != null && eq2.parser.isImplicit();
+        boolean eq1Implicit = (eq1.parser.eqtype == EquationParser.EqType.Implicit);
+        boolean eq2Implicit = eq2 != null && eq2.parser != null && (eq2.parser.eqtype == EquationParser.EqType.Implicit);
 
         double yLo = localPlotter.getCenterY() - (localPlotter.getHeight() / 2) / localPlotter.getScale();
         double yHi = localPlotter.getCenterY() + (localPlotter.getHeight() / 2) / localPlotter.getScale();

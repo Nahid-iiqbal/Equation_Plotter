@@ -3,7 +3,13 @@ package org.example.equation_plotter;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.layout.VBox;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 public class MathBridge {
+
+    private static final Logger LOGGER = Logger.getLogger(MathBridge.class.getName());
+
     private final String equationId;
     private final GraphPlotter plotter;
     private final ColorPicker cp;
@@ -11,17 +17,17 @@ public class MathBridge {
     private final VBox sliderBox;
     private final EquatorController controller;
 
-    public MathBridge(String equationId, GraphPlotter plotter, ColorPicker cp, VBox sliderBox, EquatorController controller) {
+    public MathBridge(String equationId, GraphPlotter plotter, ColorPicker cp,
+                      VBox sliderBox, EquatorController controller) {
         this.equationId = equationId;
         this.plotter = plotter;
         this.cp = cp;
         this.sliderBox = sliderBox;
         this.controller = controller;
-        this.debounceTimer = new javafx.animation.PauseTransition(javafx.util.Duration.millis(300));
+        this.debounceTimer = new javafx.animation.PauseTransition(
+                javafx.util.Duration.millis(300));
     }
 
-    // 2. MUST BE PUBLIC
-    // Inside MathBridge.java -> updateMath method
     public void updateMath(String rawMath) {
         debounceTimer.playFromStart();
         debounceTimer.setOnFinished(e -> {
@@ -31,43 +37,38 @@ public class MathBridge {
                 sliderBox.getChildren().clear();
             } else {
                 try {
-                    // IMPROVED CLEANING LOGIC
+                    // ── LaTeX → Java math cleaning ────────────────────────────
+                    // Input is LaTeX from MathQuill (e.g. \frac{1}{x}, \sin x)
                     String javaMath = text.toLowerCase()
-                            .replaceAll("\\\\frac\\{([^{}]*)\\}\\{([^{}]*)\\}", "($1)/($2)")
-                            .replace("\\sin", "sin")
-                            .replace("\\cos", "cos")
-                            .replace("\\tan", "tan")
-                            .replace("\\sec", "sec")
-                            .replace("\\csc", "csc")
-                            .replace("\\cot", "cot")
-                            .replace("\\operatorname", "")
-                            .replace("\\left", "(")
-                            .replace("\\right", ")")
-                            .replace("\\cdot", "*")
-                            .replace("\\frac", "")
-                            .replace("{", "(")
-                            .replace("}", ")")
-                            .replace("\\", "") // Remove remaining backslashes
-                            .replace(" ", "");
+                            .replaceAll("\\\\pi", String.valueOf(Math.PI))   // \pi → 3.14...
+                            .replaceAll("\\\\theta", "x")                       // \theta → x (polar)
+                            .replaceAll("\\\\frac\\{([^{}]*)}\\{([^{}]*)}", "($1)/($2)")
+                            .replaceAll("\\\\left|\\\\right", "")
+                            .replaceAll("\\\\cdot", "*")
+                            .replaceAll("\\\\times", "*")
+                            .replaceAll("\\\\div", "/")
+                            .replaceAll("\\\\sqrt\\{([^{}]*)}", "sqrt($1)")
+                            .replaceAll("\\\\([a-z]+)", "$1") // \sin→sin, \cos→cos etc.
+                            .replaceAll("[{}]", "")
+                            .replaceAll("\\s+", "");
 
-                    boolean isPolar = javaMath.matches("^\\s*r\\s*=.*") || javaMath.contains("theta");
+                    EquationParser parser = new EquationParser(javaMath);
+                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(),
+                            parser.getEqType());
 
-                    String displayMath = javaMath.replaceAll("\\btheta\\b", "θ"); // cosmetic
-                    controller.updateWebViewDisplay(equationId, displayMath);     // update UI display
-
-                    plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(), isPolar);
                     plotter.refreshEquationData(equationId);
                     plotter.draw();
 
                     EquationData data = plotter.getEquation(equationId);
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
-                        if (isPolar) {
-                            controller.createPolarRangeControls(sliderBox, equationId); // new method in controller
+                        if (data.eqType == EquationParser.EqType.Polar
+                                || data.eqType == EquationParser.EqType.Parametric) {
+                            controller.createPolarRangeControls(sliderBox, equationId);
                         }
                     }
                 } catch (Exception ex) {
-                    ex.printStackTrace();
+                    LOGGER.log(Level.WARNING, "Failed to parse/plot equation: " + rawMath, ex);
                 }
             }
         });

@@ -4,37 +4,25 @@
 <?import javafx.scene.control.*?>
 <MenuBar xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/25"
          fx:controller="org.example.equation_plotter.NavBar">
-    <menus>
-        <Menu mnemonicParsing="false" text="File">
-            <items>
-                <MenuItem fx:id="menuNew" mnemonicParsing="false" onAction="#onNew" text="New"/>
-                <MenuItem fx:id="menuOpen" mnemonicParsing="false" onAction="#onOpen" text="Open"/>
-                <MenuItem fx:id="menuSave" mnemonicParsing="false" onAction="#onSave" text="Save"/>
-                <MenuItem fx:id="menuClose" mnemonicParsing="false" onAction="#onClose" text="Close"/>
-            </items>
-        </Menu>
-        <Menu mnemonicParsing="false" text="Edit">
-            <items>
-                <MenuItem fx:id="menuDelete" mnemonicParsing="false" onAction="#onDelete" text="Delete"/>
-            </items>
-        </Menu>
-        <Menu mnemonicParsing="false" text="Options">
-            <items>
-                <MenuItem fx:id="derivativeCalculator" mnemonicParsing="false" onAction="#onDerCalc"
-                          text="Derivative Calculator"/>
-            </items>
-            <items>
-                <MenuItem fx:id="integralCalculator" mnemonicParsing="false" onAction="#onIntCalc"
-                          text="Integral Calculator"/>
-            </items>
-        </Menu>
-        <Menu mnemonicParsing="false" text="Help">
-            <items>
-                <MenuItem fx:id="menuAbout" mnemonicParsing="false" onAction="#onAbout" text="About"/>
-            </items>
-        </Menu>
-    </menus>
     <padding>
         <Insets left="5.0" right="5.0"/>
     </padding>
+    <Menu mnemonicParsing="false" text="File">
+        <MenuItem mnemonicParsing="false" onAction="#onNew" text="New"/>
+        <MenuItem mnemonicParsing="false" onAction="#onOpen" text="Open"/>
+        <MenuItem mnemonicParsing="false" onAction="#onSave" text="Save"/>
+        <MenuItem mnemonicParsing="false" onAction="#onClose" text="Close"/>
+    </Menu>
+    <Menu mnemonicParsing="false" text="Edit">
+        <MenuItem mnemonicParsing="false" onAction="#onDelete" text="Delete"/>
+    </Menu>
+    <Menu mnemonicParsing="false" text="Options">
+        <MenuItem mnemonicParsing="false" onAction="#onIntCalc"
+                  text="Integral Calculator"/>
+        <MenuItem mnemonicParsing="false" onAction="#onDerCalc"
+                  text="Derivative Calculator"/>
+    </Menu>
+    <Menu mnemonicParsing="false" text="Help">
+        <MenuItem mnemonicParsing="false" onAction="#onAbout" text="About"/>
+    </Menu>
 </MenuBar>

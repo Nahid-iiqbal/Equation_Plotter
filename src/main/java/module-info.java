@@ -16,6 +16,7 @@ module org.example.equation_plotter {
     requires jdk.jsobject;
     requires matheclipse.core;
     requires javafx.graphics;
+    requires org.jetbrains.annotations;
 
     opens org.example.equation_plotter to javafx.fxml;
     exports org.example.equation_plotter;

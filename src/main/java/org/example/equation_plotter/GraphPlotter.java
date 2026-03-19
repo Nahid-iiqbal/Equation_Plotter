@@ -14,9 +14,7 @@ import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 
 public class GraphPlotter extends StackPane {
-    // Grabs the exact number of logical threads your CPU possesses
     private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
-    // Creates a dedicated pool that uses ALL of them
     private static final ForkJoinPool MAX_POWER_POOL = new ForkJoinPool(CPU_CORES);
     private final Canvas gridCanvas;
     private double graphCenterX = 0;
@@ -32,7 +30,6 @@ public class GraphPlotter extends StackPane {
     private boolean isInteracting = false;
     private final Map<String, EquationData> currentEquations = new HashMap<>();
     private final Map<String, Points> pointsMap = new HashMap<>();
-    // Interaction States
     private boolean isMouseDown = false;
     private boolean isHovering = false;
     private boolean isSnapPoint = false;
@@ -46,19 +43,23 @@ public class GraphPlotter extends StackPane {
     private static final double SNAP_THRESHOLD_PX = 30.0;
     private final Canvas graphCanvas;
     private final Canvas overlayCanvas;
-    // Cache Trackers for Implicit Functions
     private final Map<String, CachedImplicit> implicitCache = new HashMap<>();
     private final Map<String, javafx.concurrent.Task<?>> activeTasks = new HashMap<>();
+
+    // ── isDirty: only redraw grid when view state changes ────────────────────
+    private boolean isDirty = true;
+
+    // ── Resize compensation: keep graph center locked when canvas resizes ─────
+    private double lastWidth = -1;
+    private double lastHeight = -1;
 
     public GraphPlotter(double width, double height) {
         setPrefSize(width, height);
 
-        // 1. Initialize the canvases
         gridCanvas = new Canvas(width, height);
         graphCanvas = new Canvas(width, height);
         overlayCanvas = new Canvas(width, height);
 
-        // 2. Bind their sizes so they resize perfectly when the window resizes
         gridCanvas.widthProperty().bind(this.widthProperty());
         gridCanvas.heightProperty().bind(this.heightProperty());
         graphCanvas.widthProperty().bind(this.widthProperty());
@@ -66,15 +67,15 @@ public class GraphPlotter extends StackPane {
         overlayCanvas.widthProperty().bind(this.widthProperty());
         overlayCanvas.heightProperty().bind(this.heightProperty());
 
-        // 3. Add them to the StackPane (Order matters! Bottom to Top)
         getChildren().addAll(gridCanvas, graphCanvas, overlayCanvas);
 
-
         widthProperty().addListener(e -> {
+            isDirty = true;
             refreshAllData();
             draw();
         });
         heightProperty().addListener(e -> {
+            isDirty = true;
             refreshAllData();
             draw();
         });
@@ -83,8 +84,6 @@ public class GraphPlotter extends StackPane {
             if (e.getButton() == MouseButton.PRIMARY) {
                 isMouseDown = true;
                 updateHoverState(e.getX(), e.getY());
-
-                // Snap points (intersections/intercepts) can be pinned
                 if (hoverPoint != null && isSnapPoint) {
                     togglePointSelection(hoverPoint);
                 } else if (e.getClickCount() == 2) {
@@ -97,24 +96,23 @@ public class GraphPlotter extends StackPane {
             }
         });
 
+        // Only redraw overlay on hover — not grid/graph
         setOnMouseMoved(e -> {
             updateHoverState(e.getX(), e.getY());
-            // Show HAND cursor only for snappable points
             getScene().setCursor(isSnapPoint ? javafx.scene.Cursor.HAND : javafx.scene.Cursor.DEFAULT);
-            draw();
+            drawOverlayLayer();
         });
 
         setOnMouseDragged(e -> {
             isInteracting = true;
             if (e.getButton() == MouseButton.PRIMARY) {
                 updateHoverState(e.getX(), e.getY());
-
-                // Only pan if we aren't hovering over a specific coordinate point
                 if (!isHovering) {
                     double dx = (e.getX() - prevMouseX) / scale;
                     double dy = (e.getY() - prevMouseY) / scale;
                     graphCenterX -= dx;
                     graphCenterY += dy;
+                    isDirty = true;
                 }
                 prevMouseX = e.getX();
                 prevMouseY = e.getY();
@@ -130,7 +128,7 @@ public class GraphPlotter extends StackPane {
         });
 
         setOnScroll(e -> {
-            isInteracting = true; // FIX: Prevent thread spam while scrolling
+            isInteracting = true;
             double mouseX = e.getX();
             double mouseY = e.getY();
             double prevScale = scale;
@@ -144,6 +142,7 @@ public class GraphPlotter extends StackPane {
             graphCenterX = graphX - (mouseX - getWidth() / 2) / scale;
             graphCenterY = graphY - (getHeight() / 2 - mouseY) / scale;
 
+            isDirty = true;
             scrollEndTimer.playFromStart();
             draw();
         });
@@ -157,9 +156,7 @@ public class GraphPlotter extends StackPane {
 
     private void togglePointSelection(Point2D point) {
         boolean removed = selectedPoints.removeIf(p -> p.distance(point) < 0.01);
-        if (!removed) {
-            selectedPoints.add(point);
-        }
+        if (!removed) selectedPoints.add(point);
     }
 
     private void updateHoverState(double mouseX, double mouseY) {
@@ -171,7 +168,6 @@ public class GraphPlotter extends StackPane {
         isHovering = false;
         isSnapPoint = false;
 
-        // 1. Priority: Intersections
         for (Point2D ip : intersectionPoints) {
             if (ip.distance(gx, gy) < threshold) {
                 hoverPoint = ip;
@@ -181,8 +177,6 @@ public class GraphPlotter extends StackPane {
                 return;
             }
         }
-
-        // 2. Priority: Intercepts
         for (Point2D ip : interceptPoints) {
             if (ip.distance(gx, gy) < threshold) {
                 hoverPoint = ip;
@@ -193,13 +187,9 @@ public class GraphPlotter extends StackPane {
             }
         }
 
-        // 3. Smooth Curve tracking
         double bestDist = Double.MAX_VALUE;
         for (EquationData eq : currentEquations.values()) {
-
-            // FIX: This line MUST be uncommented to prevent NPE lag while panning
-            if (eq.parser.isImplicit()) continue;
-
+            if (eq.parser.eqtype == EquationParser.EqType.Implicit) continue;
             double cy = eq.getY(gx);
             if (!Double.isNaN(cy)) {
                 double dist = Math.abs(cy - gy);
@@ -222,10 +212,14 @@ public class GraphPlotter extends StackPane {
         double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
 
         EquationData equation = currentEquations.get(id);
-        if (!equation.parser.isImplicit()) {
+        if (equation == null) return;
+        if (equation.parser.eqtype == EquationParser.EqType.Explicit) {
             equation.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        } else if (equation.eqType == EquationParser.EqType.Polar) {
+            equation.buildCachePolar(equation.thetaMin, equation.thetaMax, getWidth());
+        } else if (equation.eqType == EquationParser.EqType.Parametric) {
+            equation.buildCacheParametric(equation.tMin, equation.tMax, getWidth());
         }
-
         updateIntersections();
         updateIntercepts();
     }
@@ -239,19 +233,15 @@ public class GraphPlotter extends StackPane {
 
         for (int i = 0; i < equations.size(); i++) {
             EquationData e1 = equations.get(i);
-            if (e1.parser.isImplicit()) continue;
+            if (e1.parser.eqtype == EquationParser.EqType.Implicit) continue;
             for (int j = i + 1; j < equations.size(); j++) {
                 EquationData e2 = equations.get(j);
-                if (e2.parser.isImplicit()) continue;
-
+                if (e2.parser.eqtype == EquationParser.EqType.Implicit) continue;
                 double prevX = xMin;
                 double prevDiff = e1.getY(prevX) - e2.getY(prevX);
-
                 for (double x = xMin + scanStep; x <= xMax; x += scanStep) {
-                    double d1 = e1.getY(x);
-                    double d2 = e2.getY(x);
+                    double d1 = e1.getY(x), d2 = e2.getY(x);
                     if (Double.isNaN(d1) || Double.isNaN(d2)) continue;
-
                     double diff = d1 - d2;
                     if (prevDiff * diff <= 0 && !Double.isNaN(prevDiff)) {
                         double t = Math.abs(prevDiff) / (Math.abs(prevDiff) + Math.abs(diff));
@@ -272,17 +262,12 @@ public class GraphPlotter extends StackPane {
         double scanStep = 2.0 / scale;
 
         for (EquationData eq : currentEquations.values()) {
-            if (eq.parser.isImplicit()) continue;
-
-            // Y-Intercept
+            if (eq.parser.eqtype == EquationParser.EqType.Implicit) continue;
             if (xMin <= 0 && xMax >= 0) {
                 double yVal = eq.getY(0);
                 if (!Double.isNaN(yVal)) interceptPoints.add(new Point2D(0, yVal));
             }
-
-            // X-Intercepts
-            double prevX = xMin;
-            double prevY = eq.getY(prevX);
+            double prevX = xMin, prevY = eq.getY(prevX);
             for (double x = xMin + scanStep; x <= xMax; x += scanStep) {
                 double y = eq.getY(x);
                 if (Double.isNaN(y)) {
@@ -290,7 +275,6 @@ public class GraphPlotter extends StackPane {
                     prevY = y;
                     continue;
                 }
-
                 if (prevY * y <= 0 && !Double.isNaN(prevY)) {
                     double t = Math.abs(prevY) / (Math.abs(prevY) + Math.abs(y));
                     interceptPoints.add(new Point2D(prevX + t * (x - prevX), 0));
@@ -305,35 +289,41 @@ public class GraphPlotter extends StackPane {
         mainInstance = plotter;
     }
 
+    // ── Cancel all running implicit tasks ────────────────────────────────────
+    public void cancelAllTasks() {
+        activeTasks.values().forEach(t -> t.cancel(true));
+        activeTasks.clear();
+    }
+
     private void drawGridLayer() {
         GraphicsContext gc = gridCanvas.getGraphicsContext2D();
-        double w = getWidth();
-        double h = getHeight();
+        double w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
+
+        // Compensate for canvas resize so the graph center stays locked
+        if (w > 0 && h > 0) {
+            lastWidth = w;
+            lastHeight = h;
+        }
+
+        if (!isDirty) return;
+        isDirty = false;
 
         gc.clearRect(0, 0, w, h);
         gc.setFill(Color.web("#1e1e1e"));
         gc.fillRect(0, 0, w, h);
 
-        if (polarGrid) {
-            drawPolarGrid(gc, w, h);
-        } else {
-            drawCartesianGrid(gc, w, h);
-        }
+        if (polarGrid) drawPolarGrid(gc, w, h);
+        else drawCartesianGrid(gc, w, h);
     }
-
 
     void drawGraphLayer() {
         GraphicsContext gc = graphCanvas.getGraphicsContext2D();
-        double w = getWidth();
-        double h = getHeight();
+        double w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
+        gc.clearRect(0, 0, w, h);
+        drawFunction(gc, w, h);
 
-        gc.clearRect(0, 0, w, h); // Clear only the math layer!
-
-        drawFunction(gc, w, h); // Your existing drawFunction method
-
-        // Draw manually added user points on the graph layer
         for (Points p : pointsMap.values()) {
             double px = (p.getX() - graphCenterX) * scale + w / 2;
             double py = h / 2 - (p.getY() - graphCenterY) * scale;
@@ -345,29 +335,16 @@ public class GraphPlotter extends StackPane {
         }
     }
 
-    // This is the MAGIC. This layer clears and draws instantly without touching math.
     private void drawOverlayLayer() {
         GraphicsContext gc = overlayCanvas.getGraphicsContext2D();
-        double w = getWidth();
-        double h = getHeight();
+        double w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
+        gc.clearRect(0, 0, w, h);
 
-        gc.clearRect(0, 0, w, h); // Erase the old hover states
+        for (Point2D p : selectedPoints) drawPointMarker(gc, p, Color.web("#FEFEFA"));
+        for (Point2D ip : intersectionPoints) drawSmallIndicator(gc, ip, Color.web("#444444"));
+        for (Point2D ip : interceptPoints) drawSmallIndicator(gc, ip, Color.web("#666666"));
 
-        // Draw pinned points
-        for (Point2D p : selectedPoints) {
-            drawPointMarker(gc, p, Color.web("#FEFEFA"));
-        }
-
-        // Draw neon indicators for special points
-        for (Point2D ip : intersectionPoints) {
-            drawSmallIndicator(gc, ip, Color.web("#444444"));
-        }
-        for (Point2D ip : interceptPoints) {
-            drawSmallIndicator(gc, ip, Color.web("#666666"));
-        }
-
-        // Coordinate label for hover
         if (isMouseDown && isHovering && hoverPoint != null) {
             drawPointMarker(gc, hoverPoint, hoverColor);
         }
@@ -389,7 +366,6 @@ public class GraphPlotter extends StackPane {
         double textWidth = label.length() * 8.0;
         double textHeight = 15;
         double padding = 8;
-
         double boxX = px + 20 - (textWidth / 2) - (padding / 2);
         double boxY = py + 20 - (textHeight / 2) - (padding / 2);
 
@@ -413,16 +389,20 @@ public class GraphPlotter extends StackPane {
 
     public void refreshAllData() {
         double w = getWidth();
-        if (w <= 0) return; // Don't build a cache for a 0-width window
+        if (w <= 0) return;
 
         double graphMinX = graphCenterX - (w / 2) / scale;
         double graphMaxX = graphCenterX + (w / 2) / scale;
 
+        isDirty = true;
+
         for (EquationData equation : currentEquations.values()) {
             if (equation.parser != null) {
-                if (equation.isPolar) {
+                if (equation.eqType == EquationParser.EqType.Polar) {
                     equation.buildCachePolar(equation.thetaMin, equation.thetaMax, w);
-                } else if (!equation.parser.isImplicit()) {
+                } else if (equation.parser.eqtype == EquationParser.EqType.Parametric) {
+                    equation.buildCacheParametric(equation.tMin, equation.tMax, w);
+                } else if (equation.parser.eqtype != EquationParser.EqType.Implicit) {
                     equation.buildCacheExplicit(graphMinX, graphMaxX, w);
                 }
             }
@@ -435,23 +415,20 @@ public class GraphPlotter extends StackPane {
         return new DecimalFormat("#.##").format(d);
     }
 
-    // Call this when you need to completely refresh everything (e.g., resizing, panning, zooming)
     public void draw() {
         drawGridLayer();
         drawGraphLayer();
-        if (postDrawAction != null) {
-            postDrawAction.run();
-        }
+        if (postDrawAction != null) postDrawAction.run();
         drawOverlayLayer();
     }
 
+    // ── Cartesian grid — dots for minor, soft lines for major ─────────────────
     public void drawCartesianGrid(GraphicsContext gc, double w, double h) {
         double left = graphCenterX - w / 2 / scale;
+        double top = graphCenterY - h / 2 / scale;
         double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
         double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
-        gc.setStroke(Color.web("#333333"));
-        gc.setLineWidth(1);
-        gc.setFill(Color.GRAY);
+
         gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 12));
 
         double targetPixels = 100.0;
@@ -459,21 +436,32 @@ public class GraphPlotter extends StackPane {
         double magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
         double fraction = rawStep / magnitude;
 
-        double majorStep = (fraction < 2.0) ? 1 * magnitude : (fraction < 5.0) ? 2 * magnitude : 5 * magnitude;
+        double majorStep = (fraction < 2.0) ? magnitude
+                : (fraction < 5.0) ? 2 * magnitude
+                : 5 * magnitude;
         double minorStep = majorStep / 5.0;
 
-        gc.setStroke(Color.web("#2A2A2A"));
-        for (double x = Math.floor(left / minorStep) * minorStep; (x - left) * scale < w + scale; x += minorStep) {
-            double px = (x - graphCenterX) * scale + w / 2;
-            gc.strokeLine(px, 0, px, h);
+        // Minor grid: dots
+        if ((minorStep * scale) >= 8) {
+            gc.setFill(Color.web("#2a2a3a"));
+            for (double x = Math.floor(left / minorStep) * minorStep;
+                 (x - left) * scale < w + scale; x += minorStep) {
+                double px = (x - graphCenterX) * scale + w / 2;
+                for (double y = Math.floor(top / minorStep) * minorStep;
+                     (y - top) * scale < h + scale; y += minorStep) {
+                    double py = h / 2 - (y - graphCenterY) * scale;
+                    gc.fillOval(px - 1, py - 1, 2.2, 2.2);
+                }
+            }
         }
-        for (double y = Math.floor((graphCenterY - h / 2 / scale) / minorStep) * minorStep; (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += minorStep) {
-            double py = h / 2 - (y - graphCenterY) * scale;
-            gc.strokeLine(0, py, w, py);
-        }
+
+        // Major grid: soft lines + labels
         gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-        gc.setStroke(Color.web("#404040"));
-        for (double x = Math.floor(left / majorStep) * majorStep; (x - left) * scale < w + scale; x += majorStep) {
+        gc.setStroke(Color.web("#2e2e42"));
+        gc.setLineWidth(0.5);
+
+        for (double x = Math.floor(left / majorStep) * majorStep;
+             (x - left) * scale < w + scale; x += majorStep) {
             double px = (x - graphCenterX) * scale + w / 2;
             gc.strokeLine(px, 0, px, h);
             if (Math.abs(x) > 1e-9) {
@@ -482,7 +470,9 @@ public class GraphPlotter extends StackPane {
                 gc.fillText(formatNumber(x), px, labelY);
             }
         }
-        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStep) * majorStep; (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStep) {
+
+        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStep) * majorStep;
+             (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStep) {
             double py = h / 2 - (y - graphCenterY) * scale;
             gc.strokeLine(0, py, w, py);
             if (Math.abs(y) > 1e-9) {
@@ -492,10 +482,12 @@ public class GraphPlotter extends StackPane {
             }
         }
 
-        gc.setStroke(Color.WHITE);
-        gc.setLineWidth(2);
+        // Axes
+        gc.setStroke(Color.web("#c8c8d8"));
+        gc.setLineWidth(1.5);
         gc.strokeLine(yAxisPixel, 0, yAxisPixel, h);
         gc.strokeLine(0, xAxisPixel, w, xAxisPixel);
+        gc.setFill(Color.WHITE);
         gc.fillText("0", yAxisPixel - 10, xAxisPixel + 15);
     }
 
@@ -504,30 +496,32 @@ public class GraphPlotter extends StackPane {
             String id = entry.getKey();
             EquationData equation = entry.getValue();
             if (!equation.isVisible) continue;
-            if (equation.parser.isImplicit()) {
+            if (equation.parser.eqtype == EquationParser.EqType.Implicit) {
                 drawFunction_MarchingSquares(gc, w, h, equation.parser, equation, id);
-            } else if (equation.isPolar || equation.parser.isPolar()) {
+            } else if (equation.eqType == EquationParser.EqType.Polar
+                    || equation.parser.eqtype == EquationParser.EqType.Polar) {
                 drawFunction_Polar(gc, w, h, equation);
+            } else if (equation.eqType == EquationParser.EqType.Parametric
+                    || equation.parser.eqtype == EquationParser.EqType.Parametric) {
+                drawFunction_Parametric(gc, w, h, equation);
             } else {
                 drawFunction_Explicit(gc, w, h, equation);
             }
         }
     }
 
-
-    private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h, EquationParser mainParser, EquationData data, String id) {
-        // 1. CACHE CHECK FOR PERFORMANCE
+    private void drawFunction_MarchingSquares(GraphicsContext gc, double w, double h,
+                                              EquationParser mainParser, EquationData data, String id) {
+        // Serve cache if available
         if (implicitCache.containsKey(id)) {
             CachedImplicit cache = implicitCache.get(id);
             gc.setStroke(data.color);
             gc.setLineWidth(2.5);
-
             for (double[] line : cache.lines) {
                 double px1 = (line[0] - graphCenterX) * scale + w / 2.0;
                 double py1 = h / 2.0 - (line[1] - graphCenterY) * scale;
                 double px2 = (line[2] - graphCenterX) * scale + w / 2.0;
                 double py2 = h / 2.0 - (line[3] - graphCenterY) * scale;
-
                 if ((px1 > -100 && px1 < w + 100 && py1 > -100 && py1 < h + 100) ||
                         (px2 > -100 && px2 < w + 100 && py2 > -100 && py2 < h + 100)) {
                     gc.strokeLine(px1, py1, px2, py2);
@@ -536,60 +530,14 @@ public class GraphPlotter extends StackPane {
             if (cache.scale == scale && !isInteracting) return;
         }
 
-        // 2. TASK MANAGEMENT
-        if (activeTasks.containsKey(id)) {
-            activeTasks.get(id).cancel(true);
-        }
+        // Cancel existing task
+        if (activeTasks.containsKey(id)) activeTasks.get(id).cancel(true);
 
         final double viewCx = graphCenterX;
         final double viewCy = graphCenterY;
         final double viewScale = scale;
 
-        // 3. FAST PREVIEW PASS (coarseStep reduced to 10 for better initial detection)
-        int coarseStep = 10;
-        int coarseCols = (int) w / coarseStep + 1;
-        int coarseRows = (int) h / coarseStep + 1;
-        double[][] coarseVals = new double[coarseCols][coarseRows];
-
-        java.util.stream.IntStream.range(0, coarseCols * coarseRows).parallel().forEach(i -> {
-            int c = i % coarseCols;
-            int r = i / coarseCols;
-            double gx = viewCx + (c * coarseStep - w / 2.0) / viewScale;
-            double gy = viewCy + (h / 2.0 - r * coarseStep) / viewScale;
-            coarseVals[c][r] = mainParser.evaluateImplicit(gx, gy);
-        });
-
-        gc.setStroke(data.color.deriveColor(0, 1, 1, 0.4));
-        gc.setLineWidth(3.5);
-
-        for (int r = 0; r < coarseRows - 1; r++) {
-            for (int c = 0; c < coarseCols - 1; c++) {
-                double vtl = coarseVals[c][r], vtr = coarseVals[c + 1][r], vbl = coarseVals[c][r + 1], vbr = coarseVals[c + 1][r + 1];
-                int state = (vtl > 0 ? 8 : 0) | (vtr > 0 ? 4 : 0) | (vbr > 0 ? 2 : 0) | (vbl > 0 ? 1 : 0);
-                if (state == 0 || state == 15) continue;
-
-                double tX = c * coarseStep + coarseStep * interp(vtl, vtr), tY = r * coarseStep;
-                double bX = c * coarseStep + coarseStep * interp(vbl, vbr), bY = (r + 1) * coarseStep;
-                double lX = c * coarseStep, lY = r * coarseStep + coarseStep * interp(vtl, vbl);
-                double rX = (c + 1) * coarseStep, rY = r * coarseStep + coarseStep * interp(vtr, vbr);
-
-                if (state == 1 || state == 14) gc.strokeLine(lX, lY, bX, bY);
-                else if (state == 2 || state == 13) gc.strokeLine(bX, bY, rX, rY);
-                else if (state == 4 || state == 11) gc.strokeLine(tX, tY, rX, rY);
-                else if (state == 8 || state == 7) gc.strokeLine(lX, lY, tX, tY);
-                else if (state == 3 || state == 12) gc.strokeLine(lX, lY, rX, rY);
-                else if (state == 6 || state == 9) gc.strokeLine(tX, tY, bX, bY);
-                else if (state == 5) {
-                    gc.strokeLine(lX, lY, tX, tY);
-                    gc.strokeLine(bX, bY, rX, rY);
-                } else if (state == 10) {
-                    gc.strokeLine(tX, tY, rX, rY);
-                    gc.strokeLine(lX, lY, bX, bY);
-                }
-            }
-        }
-
-        // 4. HIGH-RES CALCULATION TASK
+        // High-res task — no coarse preview pass
         final double fineStep = 1.0 / viewScale;
         final double coarseStepMath = 10.0 / viewScale;
         final double areaMultiplier = 1.4;
@@ -603,34 +551,24 @@ public class GraphPlotter extends StackPane {
             protected List<double[]> call() {
                 List<double[]> lines = java.util.Collections.synchronizedList(new ArrayList<>());
                 int sub = 10;
-
                 java.util.stream.IntStream.range(0, (mRows - 1) * (mCols - 1)).parallel().forEach(i -> {
                     if (isCancelled()) return;
                     int c = i % (mCols - 1), r = i / (mCols - 1);
                     double bx = startX + c * coarseStepMath, by = startY - r * coarseStepMath;
-
                     for (int fr = 0; fr < sub; fr++) {
                         for (int fc = 0; fc < sub; fc++) {
                             double x = bx + fc * fineStep;
                             double y = by - fr * fineStep;
-
-                            // Evaluate the 4 corners of a 1-pixel cell
                             double vtl = mainParser.evaluateImplicit(x, y);
                             double vtr = mainParser.evaluateImplicit(x + fineStep, y);
                             double vbl = mainParser.evaluateImplicit(x, y - fineStep);
                             double vbr = mainParser.evaluateImplicit(x + fineStep, y - fineStep);
-
-                            // Determine the Marching Squares state (0-15)
                             int s = (vtl > 0 ? 8 : 0) | (vtr > 0 ? 4 : 0) | (vbr > 0 ? 2 : 0) | (vbl > 0 ? 1 : 0);
-                            if (s == 0 || s == 15) continue; // No curve in this pixel
-
-                            // Use the interp helper to find exact edge crossings
+                            if (s == 0 || s == 15) continue;
                             double ftX = x + fineStep * interp(vtl, vtr);
                             double fbX = x + fineStep * interp(vbl, vbr);
                             double flY = y - fineStep * interp(vtl, vbl);
                             double frY = y - fineStep * interp(vtr, vbr);
-
-                            // Add the calculated line segments to the cache
                             if (s == 1 || s == 14) lines.add(new double[]{x, flY, fbX, y - fineStep});
                             else if (s == 2 || s == 13) lines.add(new double[]{fbX, y - fineStep, x + fineStep, frY});
                             else if (s == 4 || s == 11) lines.add(new double[]{ftX, y, x + fineStep, frY});
@@ -654,6 +592,7 @@ public class GraphPlotter extends StackPane {
         task.setOnSucceeded(e -> {
             implicitCache.put(id, new CachedImplicit(task.getValue(), viewScale, viewCx, viewCy));
             activeTasks.remove(id);
+            isDirty = true;
             drawGraphLayer();
         });
 
@@ -677,13 +616,11 @@ public class GraphPlotter extends StackPane {
         data.setColor(color);
         pointsMap.remove(id);
 
-        // --- FIX: CLEAR THE CACHE WHEN EQUATION CHANGES ---
         implicitCache.remove(id);
         if (activeTasks.containsKey(id)) {
             activeTasks.get(id).cancel(true);
             activeTasks.remove(id);
         }
-        // --------------------------------------------------
 
         if (data.parser.getPoints() != null) {
             Points p = data.parser.getPoints();
@@ -692,20 +629,22 @@ public class GraphPlotter extends StackPane {
             currentEquations.put(id, data);
             refreshAllData();
         }
+        isDirty = true;
         draw();
     }
 
-    // new overload:
-    public void addEquationToHashmap(String id, String fullInput, Color color, boolean isPolar) {
+    public void addEquationToHashmap(String id, String fullInput, Color color,
+                                     EquationParser.EqType eqType) {
         EquationData data = new EquationData();
         data.raw = fullInput;
         data.parser = new EquationParser(fullInput);
         data.setColor(color);
-        data.isPolar = isPolar;             // new field in EquationData
-        // default theta range:
+        data.eqType = eqType;
         data.thetaMin = 0;
         data.thetaMax = 2 * Math.PI;
-        // clear caches & active tasks (existing code)
+        data.tMin = 0;
+        data.tMax = 1.0;
+
         implicitCache.remove(id);
         if (activeTasks.containsKey(id)) {
             activeTasks.get(id).cancel(true);
@@ -714,24 +653,28 @@ public class GraphPlotter extends StackPane {
 
         currentEquations.put(id, data);
         refreshAllData();
+        isDirty = true;
         draw();
     }
 
     public void removeEquation(String id) {
         currentEquations.remove(id);
         refreshAllData();
-        implicitCache.remove(id); // Clear cache if equation is removed
+        implicitCache.remove(id);
         pointsMap.remove(id);
+        isDirty = true;
         draw();
     }
 
     public void zoomIn() {
         scale = Math.min(scale * 1.1, MAX_SCALE);
+        isDirty = true;
         draw();
     }
 
     public void zoomOut() {
         scale = Math.max(scale / 1.1, MIN_SCALE);
+        isDirty = true;
         draw();
     }
 
@@ -739,6 +682,7 @@ public class GraphPlotter extends StackPane {
         graphCenterX = 0;
         graphCenterY = 0;
         scale = 50;
+        isDirty = true;
         refreshAllData();
         draw();
     }
@@ -747,14 +691,17 @@ public class GraphPlotter extends StackPane {
         EquationData data = currentEquations.get(id);
         if (data != null) {
             data.setColor(color);
+            isDirty = true;
             draw();
         }
     }
 
     public void clearAllEquations() {
+        cancelAllTasks();
         currentEquations.clear();
         pointsMap.clear();
         implicitCache.clear();
+        isDirty = true;
         draw();
     }
 
@@ -780,79 +727,79 @@ public class GraphPlotter extends StackPane {
                 gc.moveTo(pixelX, pixelY);
                 firstPoint = false;
             } else {
-                // ASYMPTOTE DETECTION:
-                // If the line jumps vertically by more than the entire height of the screen
-                // in a single pixel step, it is an asymptote. Do not connect them.
                 if (Math.abs(pixelY - prevPixelY) > h) {
-                    gc.stroke();       // Draw the curve up to this point
-                    gc.beginPath();    // Start a fresh line
-                    gc.moveTo(pixelX, pixelY); // Move the brush without drawing
+                    gc.stroke();
+                    gc.beginPath();
+                    gc.moveTo(pixelX, pixelY);
                 } else {
                     gc.lineTo(pixelX, pixelY);
                 }
             }
-
-            prevPixelY = pixelY; // Save the current Y for the next loop
+            prevPixelY = pixelY;
         }
         gc.stroke();
     }
 
+    // ── Polar grid — dots for minor rings, soft strokes for major ─────────────
     public void drawPolarGrid(GraphicsContext gc, double w, double h) {
-        // --- compute graph origin in pixel coords (align with cartesian grid origin) ---
-        double cx = (0 - graphCenterX) * scale + w / 2.0;        // pixel x of origin (0,0)
-        double cy = h / 2.0 - (0 - graphCenterY) * scale;       // pixel y of origin (0,0)
+        double cx = (0 - graphCenterX) * scale + w / 2.0;
+        double cy = h / 2.0 - (0 - graphCenterY) * scale;
 
-        // style
         gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 12));
 
-        // maximum radius (pixels) required to cover canvas from origin
         double maxRadiusPx = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
-
-        // spacing logic (same idea as Cartesian)
         double targetPixels = 100.0;
         double rawStepUnits = targetPixels / Math.max(1e-12, scale);
         double magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1e-12, rawStepUnits))));
         double fraction = rawStepUnits / magnitude;
-        double majorStepUnits = (fraction < 2.0) ? 1 * magnitude : (fraction < 5.0) ? 2 * magnitude : 5 * magnitude;
+        double majorStepUnits = (fraction < 2.0) ? magnitude
+                : (fraction < 5.0) ? 2 * magnitude
+                : 5 * magnitude;
         double minorStepUnits = majorStepUnits / 5.0;
-
         double majorStepPx = majorStepUnits * scale;
         double minorStepPx = minorStepUnits * scale;
 
-        // --- draw minor rings (subtle) ---
-        gc.setStroke(Color.web("#252525"));
-        gc.setLineWidth(1.0);
-        for (double r = minorStepPx; r <= maxRadiusPx + 1e-6; r += minorStepPx) {
-            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+        // Minor rings: dots
+        if (minorStepPx >= 8) {
+            gc.setFill(Color.web("#2a2a3a"));
+            int dotsPerRing = 360;
+            for (double r = minorStepPx; r <= maxRadiusPx + 1e-6; r += minorStepPx) {
+                boolean isMajor = Math.abs((r / majorStepPx) - Math.round(r / majorStepPx)) < 0.01;
+                if (isMajor) continue;
+                for (int i = 0; i < dotsPerRing; i++) {
+                    double ang = Math.toRadians(i);
+                    double dx = cx + Math.cos(ang) * r;
+                    double dy = cy - Math.sin(ang) * r;
+                    if (dx > 0 && dx < w && dy > 0 && dy < h)
+                        gc.fillOval(dx - 1, dy - 1, 2.2, 2.2);
+                }
+            }
         }
 
-        // --- draw major rings (slightly brighter) ---
-        gc.setStroke(Color.web("#333333"));
-        gc.setLineWidth(1.2);
-        for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx) {
+        // Major rings
+        gc.setStroke(Color.web("#2e2e42"));
+        gc.setLineWidth(0.5);
+        for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx)
             gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
-        }
 
-        // --- radial spokes (subtle) ---
-        gc.setStroke(Color.web("#2A2A2A"));
-        gc.setLineWidth(1.0);
-        // choose an angular step that looks good (15°) but make it divisible if zoomed out
+        // Spokes
+        gc.setStroke(Color.web("#2e2e42"));
+        gc.setLineWidth(0.5);
         int degreesStep = 15;
         for (int deg = 0; deg < 360; deg += degreesStep) {
             double ang = Math.toRadians(deg);
-            double x = cx + Math.cos(ang) * maxRadiusPx;
-            double y = cy - Math.sin(ang) * maxRadiusPx; // canvas Y downwards
-            gc.strokeLine(cx, cy, x, y);
+            gc.strokeLine(cx, cy, cx + Math.cos(ang) * maxRadiusPx,
+                    cy - Math.sin(ang) * maxRadiusPx);
         }
 
-
-        // --- axis labels (copy-paste from cartesian grid) ---
+        // Axis labels
         gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-        gc.setStroke(Color.web("#404040"));
         double left = graphCenterX - w / 2 / scale;
         double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
         double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
-        for (double x = Math.floor(left / majorStepUnits) * majorStepUnits; (x - left) * scale < w + scale; x += majorStepUnits) {
+
+        for (double x = Math.floor(left / majorStepUnits) * majorStepUnits;
+             (x - left) * scale < w + scale; x += majorStepUnits) {
             double px = (x - graphCenterX) * scale + w / 2;
             if (Math.abs(x) > 1e-9) {
                 gc.setFill(Color.WHITE);
@@ -860,7 +807,8 @@ public class GraphPlotter extends StackPane {
                 gc.fillText(formatNumber(x), px, labelY);
             }
         }
-        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStepUnits) * majorStepUnits; (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStepUnits) {
+        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStepUnits) * majorStepUnits;
+             (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStepUnits) {
             double py = h / 2 - (y - graphCenterY) * scale;
             if (Math.abs(y) > 1e-9) {
                 gc.setFill(Color.WHITE);
@@ -869,47 +817,35 @@ public class GraphPlotter extends StackPane {
             }
         }
 
-        // --- draw main axes ---
-        gc.setStroke(Color.WHITE);
-        gc.setLineWidth(2.0);
+        // Main axes
+        gc.setStroke(Color.web("#c8c8d8"));
+        gc.setLineWidth(1.5);
         gc.strokeLine(cx - maxRadiusPx, cy, cx + maxRadiusPx, cy);
         gc.strokeLine(cx, cy - maxRadiusPx, cx, cy + maxRadiusPx);
 
-        // --- degree labels around outer rim (Desmos style) ---
+        // Degree labels around outer rim
         gc.setFill(Color.web("#999999"));
         double padding = 14.0;
         double labelRadius;
-
-        if ((cx > w * 1 / 3 && cx < w * 2 / 3) && (Math.abs(cy) > h * 1 / 3 && Math.abs(cy) < h * 2 / 3)) {
+        if ((cx > w / 3 && cx < w * 2 / 3) && (Math.abs(cy) > h / 3 && Math.abs(cy) < h * 2 / 3))
             labelRadius = Math.min(cx, Math.min(w - cx, Math.min(Math.abs(cy), h - Math.abs(cy))));
-        } else if (cx > w * 1 / 3 && cx < w * 2 / 3) {
+        else if (cx > w / 3 && cx < w * 2 / 3)
             labelRadius = Math.min(cx, w - cx);
-        } else {
+        else
             labelRadius = Math.max(Math.abs(cy), h - Math.abs(cy));
-        }
-        labelRadius = Math.floor(labelRadius / majorStepPx) * majorStepPx;
-        labelRadius -= padding;
+        labelRadius = Math.floor(labelRadius / majorStepPx) * majorStepPx - padding;
+
         for (int deg = 0; deg < 360; deg += 2 * degreesStep) {
             double ang = Math.toRadians(deg);
             double lx = cx + Math.cos(ang) * labelRadius;
             double ly = cy - Math.sin(ang) * labelRadius;
-            String label = deg + "°";
-            // Adjust alignment depending on quadrant
-            if (deg == 90) {
-                gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
-            } else if (deg == 270) {
-                gc.setTextAlign(javafx.scene.text.TextAlignment.RIGHT);
-            } else {
-                gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-            }
-
-            if (lx > 5 && lx < w - 5 && ly > 5 && ly < h - 5) {
-                gc.fillText(label, lx, ly);
-            }
+            if (deg == 90) gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
+            else if (deg == 270) gc.setTextAlign(javafx.scene.text.TextAlignment.RIGHT);
+            else gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+            if (lx > 5 && lx < w - 5 && ly > 5 && ly < h - 5)
+                gc.fillText(deg + "°", lx, ly);
         }
-
     }
-
 
     public EquationData getEquation(String id) {
         return currentEquations.get(id);
@@ -923,8 +859,6 @@ public class GraphPlotter extends StackPane {
         gc.beginPath();
         gc.setStroke(data.color);
         gc.setLineWidth(2.5);
-
-        // Use the cached x/y pairs if available
         boolean first = true;
         if (data.CacheX != null && data.CacheY != null) {
             for (int i = 0; i < data.CacheX.length; i++) {
@@ -938,29 +872,29 @@ public class GraphPlotter extends StackPane {
                 if (first) {
                     gc.moveTo(px, py);
                     first = false;
-                } else {
-                    gc.lineTo(px, py);
-                }
+                } else gc.lineTo(px, py);
             }
             gc.stroke();
-        } else {
-            // fallback simple direct sampling if cache not ready
-            boolean started = true;
-            int steps = Math.max(200, (int) (w * 1.5));
-            for (int i = 0; i <= steps; i++) {
-                double t = data.thetaMin + (data.thetaMax - data.thetaMin) * i / (double) steps;
-                double r = data.parser.evaluatePolar(t);
-                if (Double.isNaN(r)) {
-                    started = true;
+        }
+    }
+
+    private void drawFunction_Parametric(GraphicsContext gc, double w, double h, EquationData data) {
+        gc.beginPath();
+        gc.setStroke(data.color);
+        gc.setLineWidth(2.5);
+        if (data.CacheX != null && data.CacheY != null) {
+            boolean first = true;
+            for (int i = 0; i < data.CacheX.length; i++) {
+                double x = data.CacheX[i], y = data.CacheY[i];
+                if (Double.isNaN(x) || Double.isNaN(y)) {
+                    first = true;
                     continue;
                 }
-                double x = r * Math.cos(t);
-                double y = r * Math.sin(t);
-                double px = (x - graphCenterX) * scale + w / 2;
-                double py = h / 2 - (y - graphCenterY) * scale;
-                if (started) {
+                double px = (x - graphCenterX) * scale + w / 2.0;
+                double py = h / 2.0 - (y - graphCenterY) * scale;
+                if (first) {
                     gc.moveTo(px, py);
-                    started = false;
+                    first = false;
                 } else gc.lineTo(px, py);
             }
             gc.stroke();
@@ -968,33 +902,13 @@ public class GraphPlotter extends StackPane {
     }
 
     public void toggleGrid() {
-        polarGrid = (polarGrid) ? false : true;
+        polarGrid = !polarGrid;
+        isDirty = true;
         draw();
     }
 
     public boolean polarGrid() {
         return polarGrid;
-    }
-
-    public void drawIntegralShading(GraphicsContext gc, EquationData eq, double a, double b) {
-        gc.setFill(eq.color.deriveColor(0, 1, 1, 0.3)); // 30% opacity for a nice "glow"
-        gc.beginPath();
-
-        double startPx = (a - graphCenterX) * scale + getWidth() / 2;
-        double zeroY = getHeight() / 2 + graphCenterY * scale; // The x-axis pixel line
-
-        gc.moveTo(startPx, zeroY); // Start on the x-axis
-
-        for (double x = a; x <= b; x += 1.0 / scale) {
-            double px = (x - graphCenterX) * scale + getWidth() / 2;
-            double py = getHeight() / 2 - (eq.getY(x) - graphCenterY) * scale;
-            if (!Double.isNaN(py)) gc.lineTo(px, py);
-        }
-
-        double endPx = (b - graphCenterX) * scale + getWidth() / 2;
-        gc.lineTo(endPx, zeroY); // Close the path back to the x-axis
-        gc.closePath();
-        gc.fill();
     }
 
     public double getCenterX() {
@@ -1013,4 +927,3 @@ public class GraphPlotter extends StackPane {
         this.postDrawAction = action;
     }
 }
-

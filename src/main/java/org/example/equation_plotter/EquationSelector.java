@@ -11,6 +11,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class EquationSelector {
     private final Map<String, EquationData> equations;
@@ -35,7 +36,7 @@ public class EquationSelector {
         comboBox.getStyleClass().add("selector-combo");
 
         // Ensure the list items also use the font
-        comboBox.setConverter(new javafx.util.StringConverter<EquationData>() {
+        comboBox.setConverter(new javafx.util.StringConverter<>() {
             @Override
             public String toString(EquationData item) {
                 return (item == null) ? "" : item.raw;
@@ -77,7 +78,7 @@ public class EquationSelector {
 
         Scene scene = new Scene(layout, 400, 250);
         // Link the existing CSS file
-        scene.getStylesheets().add(getClass().getResource("/org/example/equation_plotter/style.css").toExternalForm());
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/org/example/equation_plotter/style.css")).toExternalForm());
 
         stage.setScene(scene);
         stage.show();

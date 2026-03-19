@@ -1,29 +1,14 @@
 package org.example.equation_plotter;
 
 import javafx.application.Platform;
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.DialogPane;
-import javafx.scene.control.MenuItem;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class NavBar {
-    @FXML
-    private MenuItem derivativeCalculator;
-    @FXML
-    private MenuItem menuNew;
-    @FXML
-    private MenuItem menuOpen;
-    @FXML
-    private MenuItem menuSave;
-    @FXML
-    private MenuItem menuClose;
-    @FXML
-    private MenuItem menuDelete;
-    @FXML
-    private MenuItem menuAbout;
     private EquatorController mainController;
 
     public void setMainController(EquatorController mainController) {
@@ -31,33 +16,33 @@ public class NavBar {
     }
 
     @FXML
-    void onNew(ActionEvent event) {
-        if (mainController != null) mainController.handleNewFile(event);
+    void onNew() {
+        if (mainController != null) mainController.handleNewFile();
     }
 
     @FXML
-    void onOpen(ActionEvent event) {
-        if (mainController != null) mainController.handleOpenFile(event);
+    void onOpen() {
+        if (mainController != null) mainController.handleOpenFile();
     }
 
     @FXML
-    void onSave(ActionEvent event) {
-        if (mainController != null) mainController.handleSaveFile(event);
+    void onSave() {
+        if (mainController != null) mainController.handleSaveFile();
     }
 
     @FXML
-    void onClose(ActionEvent event) {
+    void onClose() {
         Platform.exit();
         System.exit(0);
     }
 
     @FXML
-    void onDelete(ActionEvent event) {
+    void onDelete() {
         // Implementation for clearing specific data if needed
     }
 
     @FXML
-    void onAbout(ActionEvent event) {
+    void onAbout() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("About Equator");
         alert.setHeaderText("EQUATOR GRAPHING CALCULATOR");
@@ -84,38 +69,100 @@ public class NavBar {
 
         // Style the Dialog
         DialogPane dialogPane = alert.getDialogPane();
-        dialogPane.getStylesheets().add(getClass().getResource("/org/example/equation_plotter/style.css").toExternalForm());
+        dialogPane.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/org/example/equation_plotter/style.css")).toExternalForm());
         dialogPane.getStyleClass().add("about-dialog");
         alert.showAndWait();
     }
 
     @FXML
-    private void onDerCalc(ActionEvent event) {
-        // Get the map of current equations from the plotter
+    private void onDerCalc() {
         Map<String, EquationData> activeEqns = GraphPlotter.getCurrentEquations();
 
         if (activeEqns.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("No Equations");
+            alert.setHeaderText(null);
+            alert.setContentText("No equations are currently plotted.\nAdd an equation before using the derivative calculator.");
+            alert.getDialogPane().setPrefSize(360, 160);
+            DialogPane dp = alert.getDialogPane();
+            dp.getStylesheets().add(Objects.requireNonNull(getClass().getResource(
+                    "/org/example/equation_plotter/style.css")).toExternalForm());
+            dp.getStyleClass().add("compact-dialog");
+            alert.showAndWait();
             return;
         }
 
-        // Open the new selection window
+        // Filter out implicit equations — derivative only works on explicit
+        Map<String, EquationData> explicitOnly = activeEqns.entrySet().stream()
+                .filter(e -> e.getValue().parser != null
+                        && !e.getValue().parser.eqtype.equals(EquationParser.EqType.Implicit)
+                        && !e.getValue().isPolar)
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey, Map.Entry::getValue));
+
+        if (explicitOnly.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("No Compatible Equations");
+            alert.setHeaderText(null);
+            alert.setContentText("Derivative calculator only works on explicit equations (e.g. x^2).\nImplicit and polar equations are not supported.");
+            alert.getDialogPane().setPrefSize(360, 160);
+            DialogPane dp = alert.getDialogPane();
+            dp.getStylesheets().add(Objects.requireNonNull(getClass().getResource(
+                    "/org/example/equation_plotter/style.css")).toExternalForm());
+            dp.getStyleClass().add("compact-dialog");
+            alert.showAndWait();
+            return;
+        }
+
         EquationSelector selector = new EquationSelector(
-                activeEqns,
+                explicitOnly,
                 0, 1000
         );
         selector.show();
     }
 
     @FXML
-    void onIntCalc(ActionEvent event) {
+    void onIntCalc() {
         var eqMap = GraphPlotter.getCurrentEquations();
+
+        // No equations at all
         if (eqMap.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "No active equations found to integrate.").show();
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("No Equations");
+            alert.setHeaderText(null);
+            alert.setContentText("No equations are currently plotted.\nAdd an equation before using the integral calculator.");
+            alert.getDialogPane().setPrefSize(360, 160);
+            DialogPane dp = alert.getDialogPane();
+            dp.getStylesheets().add(Objects.requireNonNull(getClass().getResource(
+                    "/org/example/equation_plotter/style.css")).toExternalForm());
+            dp.getStyleClass().add("compact-dialog");
+            alert.showAndWait();
             return;
         }
 
-        // Pass the first equation as default
-        integralCalc calc = new integralCalc(eqMap.values().iterator().next());
+        // Filter out equations with no valid parser
+        var validEqMap = eqMap.entrySet().stream()
+                .filter(e -> e.getValue().parser != null && e.getValue().isVisible)
+                .collect(java.util.stream.Collectors.toMap(
+                        java.util.Map.Entry::getKey,
+                        java.util.Map.Entry::getValue));
+
+        if (validEqMap.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("No Valid Equations");
+            alert.setHeaderText(null);
+            alert.setContentText("No valid equations found.\nMake sure at least one equation is visible and correctly entered.");
+            alert.getDialogPane().setPrefSize(360, 160);
+            DialogPane dp = alert.getDialogPane();
+            dp.getStylesheets().add(Objects.requireNonNull(getClass().getResource(
+                    "/org/example/equation_plotter/style.css")).toExternalForm());
+            dp.getStyleClass().add("compact-dialog");
+            alert.showAndWait();
+            return;
+        }
+
+        // Pass the first valid equation as default
+        integralCalc calc = new integralCalc(validEqMap.values().iterator().next());
         calc.show();
     }
 }

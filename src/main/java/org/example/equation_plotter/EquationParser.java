@@ -12,16 +12,16 @@ public class EquationParser {
     private final Map<Character, Parameter> parameters = new HashMap<>();
     private Node mathExpr;
     private Node polarExpr;
+    public EqType eqtype = EqType.Explicit;
+    private Node paramXExpr;
+    private Node paramYExpr;
     private Node limitExpr;
     private boolean isLinearInY = false;
-    private boolean isImplicit = false;
-    private boolean isPolar = false;
     private boolean hasLimit = false;
-    private final String rawInput;
     private boolean isValid = true;
+    private String paramX, paramY;
 
     public EquationParser(String fullInput) {
-        this.rawInput = fullInput;
 
         try {
             Pattern pointPattern = Pattern.compile("^\\s*\\((-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\)\\s*$");
@@ -33,7 +33,7 @@ public class EquationParser {
                 return;
             }
 
-            String mathPart = fullInput.toLowerCase();
+            String mathPart = fullInput.toLowerCase().trim();
             String limitPart = "";
 
             if (fullInput.contains("{")) {
@@ -43,44 +43,78 @@ public class EquationParser {
                 hasLimit = true;
             }
 
-            String lower = mathPart.toLowerCase().trim();
-            if (lower.matches("^r\\s*=.*")) {
-                isPolar = true;
-                isImplicit = false;
+            if (mathPart.contains("t") && mathPart.contains(",") && mathPart.startsWith("(") && mathPart.endsWith(")")) {
+                eqtype = EqType.Parametric;
+                mathPart = mathPart.replace("(", "").replace(")", "");
+                String[] parts = mathPart.split(",");
+
+                this.paramX = parts[0].replace("t", "x");
+                this.paramY = parts[1].replace("t", "x");
+
+                System.out.println("Parametric: " + this.paramX + ", " + this.paramY + " " + eqtype);
+            } else if (mathPart.matches("^r\\s*=.*")) {
+                eqtype = EqType.Polar;
                 // extract right-hand side after r=
                 String rhs = mathPart.substring(mathPart.indexOf('=') + 1).trim();
                 // normalize theta tokens so parser sees x as the variable (theta -> x)
-                rhs = rhs.replace("θ", "theta").replace("theta", "x");
+                rhs = rhs.replace("θ", "t").replace("t", "x");
                 // Also replace standalone 't' with 'x' (word boundary)
 //                rhs = rhs.replaceAll("\\t\\b", "x");
                 mathPart = rhs;
-            }
-            else if (mathPart.contains("=")) {
+            } else if (mathPart.contains("=")) {
                 String[] parts = mathPart.split("=");
                 if (parts.length == 2) {
                     // Rearranges everything to one side: (left) - (right) = 0
                     mathPart = "(" + parts[0] + ") - (" + parts[1] + ")";
                 }
-                isImplicit = true;
+                eqtype = EqType.Implicit;
             } else {
                 mathPart = mathPart.replaceAll("^(y\\s*=|f\\(x\\)\\s*=)", "").trim();
-                isImplicit = false;
+                eqtype = EqType.Explicit;
             }
 
             detectParameters(mathPart);
 
             // Compile string into blazing fast Java Lambdas
-            this.mathExpr = new ASTCompiler(mathPart, parameters).parse();
+            if (eqtype == EqType.Parametric) {
+                this.paramXExpr = new ASTCompiler(paramX, parameters).parse();
+                this.paramYExpr = new ASTCompiler(paramY, parameters).parse();
+                this.isValid = true;
+                return;
+            } else {
+                this.mathExpr = new ASTCompiler(mathPart, parameters).parse();
+            }
+
             if (hasLimit) {
                 this.limitExpr = new ASTCompiler(limitPart, parameters).parse();
             }
 
-            if (isImplicit) checkLinearity();
+            if (eqtype == EqType.Implicit) checkLinearity();
 
         } catch (Exception e) {
             isValid = false;
             // Fallback for incomplete equations while typing
             this.mathExpr = (x, y) -> Double.NaN;
+        }
+    }
+
+    public boolean isImplicit() {
+        return eqtype == EqType.Implicit;
+    }
+
+    private void checkLinearity() {
+        if (mathExpr == null) return;
+        double v0 = mathExpr.eval(1.23, 0);
+        double v1 = mathExpr.eval(1.23, 1);
+        double v2 = mathExpr.eval(1.23, 2);
+
+        if (!Double.isNaN(v0) && !Double.isNaN(v1) && !Double.isNaN(v2)) {
+            double d1 = v1 - v0;
+            double d2 = v2 - v1;
+            if (Math.abs(d1 - d2) < 1e-9 && Math.abs(d1) > 1e-12) {
+                this.isLinearInY = true;
+//                this.isImplicit = false;
+            }
         }
     }
 
@@ -103,19 +137,15 @@ public class EquationParser {
         }
     }
 
-    private void checkLinearity() {
-        if (mathExpr == null) return;
-        double v0 = mathExpr.eval(1.23, 0);
-        double v1 = mathExpr.eval(1.23, 1);
-        double v2 = mathExpr.eval(1.23, 2);
-
-        if (!Double.isNaN(v0) && !Double.isNaN(v1) && !Double.isNaN(v2)) {
-            double d1 = v1 - v0;
-            double d2 = v2 - v1;
-            if (Math.abs(d1 - d2) < 1e-9 && Math.abs(d1) > 1e-12) {
-                this.isLinearInY = true;
-                this.isImplicit = false;
-            }
+    public double evaluatePolar(double theta) {
+        if (!isValid || eqtype != EqType.Polar || mathExpr == null) return Double.NaN;
+        try {
+            // treat parser x as theta
+            double r = mathExpr.eval(theta, 0);
+            // Note: for polar domain restrictions we will use EquationData.thetaMin/max (UI-driven)
+            return r;
+        } catch (Exception e) {
+            return Double.NaN;
         }
     }
 
@@ -158,16 +188,24 @@ public class EquationParser {
         }
     }
 
-    public double evaluatePolar(double theta) {
-        if (!isValid || !isPolar || mathExpr == null) return Double.NaN;
+    public double[] evaluateParametric(double t) {
+        double[] nan = {Double.NaN, Double.NaN};
+        if (!isValid) return nan;
+
         try {
-            // treat parser x as theta
-            double r = mathExpr.eval(theta, 0);
-            // Note: for polar domain restrictions we will use EquationData.thetaMin/max (UI-driven)
+            double px = paramXExpr.eval(t, 0);
+            double py = paramYExpr.eval(t, 0);
+            double r[] = {px, py};
+
             return r;
+
         } catch (Exception e) {
-            return Double.NaN;
+            return nan;
         }
+    }
+
+    public EqType getEqType() {
+        return eqtype;
     }
 
     public boolean isValid() {
@@ -185,20 +223,8 @@ public class EquationParser {
                 .replace("and", " && ");
     }
 
-    private String convertPolar(String expr) {
-        if(expr.contains("r") || expr.contains("t")){
-            expr = expr.replaceAll("\\br\\b", "");
-            expr = expr.replaceAll("\\btheta\\b", "x");
-            expr = expr.replaceAll("\\bθ\\b", "x");
-        }
-        return expr;
-    }
 
-    public boolean isImplicit() {
-        return isImplicit;
-    }
-
-    public boolean isPolar(){ return isPolar; }
+    public enum EqType {Implicit, Explicit, Polar, Parametric}
 
     // --- NATIVE AST INTERFACES ---
     @FunctionalInterface
