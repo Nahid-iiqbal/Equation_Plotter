@@ -66,7 +66,11 @@ public class EquationSelector {
         calcButton.setOnAction(e -> {
             EquationData selectedData = comboBox.getValue();
             if (selectedData != null) {
-                derivativeCalc calc = new derivativeCalc(selectedData, minX, maxX);
+                // Pass the current theme state to the new window
+                boolean isLight = GraphPlotter.getMainInstance().isLightMode;
+
+
+                derivativeCalc calc = new derivativeCalc(selectedData, minX, maxX, isLight);
                 calc.showInNewWindow();
                 stage.close();
             }

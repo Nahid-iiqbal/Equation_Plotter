@@ -406,6 +406,11 @@
     -fx-transition: all 0.2s;
 }
 
+.light-theme .equation-card {
+    -fx-background-color: rgba(255, 255, 255, 0.9);
+    -fx-border-color: rgba(0, 0, 0, 0.1);
+}
+
 .equation-card:hover {
     -fx-border-color: rgba(0, 255, 255, 0.4);
     -fx-effect: dropshadow(gaussian, rgba(0, 255, 255, 0.2), 12, 0.4, 0, 0);

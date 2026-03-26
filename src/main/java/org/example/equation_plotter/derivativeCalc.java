@@ -22,11 +22,13 @@ public class derivativeCalc {
     private final double screenMinX;
     private final double screenMaxX;
     private EquationData derivativeEqnData;
+    private final boolean isLightMode;
 
-    public derivativeCalc(EquationData eqn, double screenMinX, double screenMaxX) {
+    public derivativeCalc(EquationData eqn, double screenMinX, double screenMaxX, boolean isLight) {
         this.eqn = eqn;
         this.screenMinX = screenMinX;
         this.screenMaxX = screenMaxX;
+        this.isLightMode = isLight;
     }
 
     // ── Trig bracket normalizer ───────────────────────────────────────────────
@@ -106,12 +108,11 @@ public class derivativeCalc {
                 Math.max(origRaw.length(), derRaw.length()) * 8.0 + 60);
         double boxH = 62;
 
-        // Dark background
-        gc.setFill(Color.web("#0d0d1a", 0.88));
+        gc.setFill(isLightMode ? Color.web("#f5f5f5", 0.95) : Color.web("#0d0d1a", 0.88));
         gc.fillRoundRect(boxX, boxY, boxW, boxH, 10, 10);
 
-        // Cyan border
-        gc.setStroke(Color.web("#00FFFF", 0.25));
+        // Border
+        gc.setStroke(isLightMode ? Color.web("#cccccc", 0.8) : Color.web("#00FFFF", 0.25));
         gc.setLineWidth(1);
         gc.strokeRoundRect(boxX, boxY, boxW, boxH, 10, 10);
 
@@ -122,11 +123,13 @@ public class derivativeCalc {
         // f(x) — green swatch + label
         gc.setFill(Color.web("#1EF737"));
         gc.fillRect(boxX + 10, boxY + 18, 18, 3);
+        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE); // Swap text color
         gc.fillText("f(x)  = " + origRaw, boxX + 34, boxY + 20);
 
         // f'(x) — red swatch + label
         gc.setFill(Color.web("#ed2d63"));
         gc.fillRect(boxX + 10, boxY + 40, 18, 3);
+        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE); // Swap text color
         gc.fillText("f'(x) = " + derRaw, boxX + 34, boxY + 42);
     }
 

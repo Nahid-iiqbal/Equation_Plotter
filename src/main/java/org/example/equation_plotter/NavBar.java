@@ -36,10 +36,6 @@ public class NavBar {
         System.exit(0);
     }
 
-    @FXML
-    void onDelete() {
-        // Implementation for clearing specific data if needed
-    }
 
     @FXML
     void onAbout() {
@@ -164,5 +160,20 @@ public class NavBar {
         // Pass the first valid equation as default
         integralCalc calc = new integralCalc(validEqMap.values().iterator().next());
         calc.show();
+    }
+
+    @FXML
+    void onExport() {
+        if (mainController != null) {
+            mainController.handleExportImage();
+        }
+    }
+
+
+    @FXML
+    void onToggleTheme() {
+        if (mainController != null) {
+            mainController.toggleTheme();
+        }
     }
 }

@@ -11,7 +11,6 @@ public class EquationParser {
 
     private final Map<Character, Parameter> parameters = new HashMap<>();
     private Node mathExpr;
-    private Node polarExpr;
     private Node paramXExpr;
     private Node paramYExpr;
     public EqType eqtype = EqType.Explicit;
@@ -19,6 +18,7 @@ public class EquationParser {
     private boolean isLinearInY = false;
     private boolean hasLimit = false;
     private boolean isValid = true;
+    public boolean isInequality = false;
     private String paramX, paramY;
 
     public EquationParser(String fullInput) {
@@ -43,7 +43,10 @@ public class EquationParser {
                 hasLimit = true;
             }
 
-            if (mathPart.contains("t") && mathPart.contains(",")
+            if (mathPart.contains("<") || mathPart.contains(">")) {
+                isInequality = true;
+                eqtype = EqType.Implicit;
+            } else if (mathPart.contains("t") && mathPart.contains(",")
                     && mathPart.startsWith("(") && mathPart.endsWith(")")) {
                 eqtype = EqType.Parametric;
 
@@ -419,12 +422,12 @@ public class EquationParser {
                 case "sec" -> (X, Y) -> 1.0 / Math.cos(a.eval(X, Y));
                 case "csc" -> (X, Y) -> 1.0 / Math.sin(a.eval(X, Y));
                 case "cot" -> (X, Y) -> 1.0 / Math.tan(a.eval(X, Y));
-                case "asin", "arcsin" -> (X, Y) -> Math.asin(a.eval(X, Y));
-                case "acos", "arccos" -> (X, Y) -> Math.acos(a.eval(X, Y));
-                case "atan", "arctan" -> (X, Y) -> Math.atan(a.eval(X, Y));
-                case "asec", "arcsec" -> (X, Y) -> Math.acos(1.0 / a.eval(X, Y));
-                case "acsc", "arccsc" -> (X, Y) -> Math.asin(1.0 / a.eval(X, Y));
-                case "acot", "arccot" -> (X, Y) -> Math.atan(1.0 / a.eval(X, Y));
+                case "arcsin" -> (X, Y) -> Math.asin(a.eval(X, Y));
+                case "arccos" -> (X, Y) -> Math.acos(a.eval(X, Y));
+                case "arctan" -> (X, Y) -> Math.atan(a.eval(X, Y));
+                case "arcsec" -> (X, Y) -> Math.acos(1.0 / a.eval(X, Y));
+                case "arccsc" -> (X, Y) -> Math.asin(1.0 / a.eval(X, Y));
+                case "arccot" -> (X, Y) -> Math.atan(1.0 / a.eval(X, Y));
                 case "sinh" -> (X, Y) -> Math.sinh(a.eval(X, Y));
                 case "cosh" -> (X, Y) -> Math.cosh(a.eval(X, Y));
                 case "tanh" -> (X, Y) -> Math.tanh(a.eval(X, Y));
@@ -456,7 +459,7 @@ public class EquationParser {
             int i = 0;
 
             // Order matters: check longest function names first
-            String[] funcs = {"asec", "arcsec", "acsc", "arccsc", "acot", "arccot", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "signum", "asin", "acos", "atan", "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round", "sign", "ceil", "sin", "cos", "tan", "abs", "log", "exp", "ln"};
+            String[] funcs = {"arcsec", "arccsc", "arccot", "sec", "csc", "cot", "sin", "cos", "tan", "arcsin", "arccos", "arctan", "signum", "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round", "sign", "ceil", "abs", "log", "exp", "ln"};
 
             while (i < name.length()) {
                 Node part = null;

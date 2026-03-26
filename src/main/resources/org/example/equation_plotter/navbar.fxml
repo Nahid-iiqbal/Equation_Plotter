@@ -11,10 +11,11 @@
         <MenuItem mnemonicParsing="false" onAction="#onNew" text="New"/>
         <MenuItem mnemonicParsing="false" onAction="#onOpen" text="Open"/>
         <MenuItem mnemonicParsing="false" onAction="#onSave" text="Save"/>
+        <MenuItem mnemonicParsing="false" onAction="#onExport" text="Export"/>
         <MenuItem mnemonicParsing="false" onAction="#onClose" text="Close"/>
     </Menu>
     <Menu mnemonicParsing="false" text="Edit">
-        <MenuItem mnemonicParsing="false" onAction="#onDelete" text="Delete"/>
+        <MenuItem mnemonicParsing="false" onAction="#onToggleTheme" text="Toggle theme"/>
     </Menu>
     <Menu mnemonicParsing="false" text="Options">
         <MenuItem mnemonicParsing="false" onAction="#onIntCalc"
