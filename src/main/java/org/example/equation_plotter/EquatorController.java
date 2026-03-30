@@ -264,24 +264,24 @@ public class EquatorController {
             boolean live = graphPlotter != null && graphPlotter.isLightMode;
             return live
                     ? "-fx-background-color: rgba(255,255,255,0.9);" +
-                    "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                    "-fx-border-color: rgba(0,0,0,0.1); -fx-border-width: 1;"
+                      "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                      "-fx-border-color: rgba(0,0,0,0.1); -fx-border-width: 1;"
                     : "-fx-background-color: rgba(30,30,50,0.9);" +
-                    "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                    "-fx-border-color: rgba(0,255,255,0.0); -fx-border-width: 1;";
+                      "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                      "-fx-border-color: rgba(0,255,255,0.0); -fx-border-width: 1;";
         };
 
         java.util.function.Supplier<String> liveHoverStyle = () -> {
             boolean live = graphPlotter != null && graphPlotter.isLightMode;
             return live
                     ? "-fx-background-color: rgba(255,255,255,1.0);" +
-                    "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                    "-fx-border-color: rgba(0,170,221,0.42); -fx-border-width: 1;" +
-                    "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.4, 0, 0);"
+                      "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                      "-fx-border-color: rgba(0,170,221,0.42); -fx-border-width: 1;" +
+                      "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.4, 0, 0);"
                     : "-fx-background-color: rgba(30,30,50,0.95);" +
-                    "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                    "-fx-border-color: rgba(0,255,255,0.42); -fx-border-width: 1;" +
-                    "-fx-effect: dropshadow(gaussian, rgba(0,255,255,0.18), 12, 0.4, 0, 0);";
+                      "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                      "-fx-border-color: rgba(0,255,255,0.42); -fx-border-width: 1;" +
+                      "-fx-effect: dropshadow(gaussian, rgba(0,255,255,0.18), 12, 0.4, 0, 0);";
         };
 
         // Apply initial style using the live supplier (correct at creation time)
@@ -348,6 +348,9 @@ public class EquatorController {
                 });
 
         btn_rmv.setOnAction(event -> {
+            // Disable the button immediately to prevent double-clicks
+            btn_rmv.setDisable(true);
+
             FadeTransition fadeOut = new FadeTransition(Duration.millis(160), equationBlock);
             fadeOut.setFromValue(1);
             fadeOut.setToValue(0);
@@ -355,8 +358,16 @@ public class EquatorController {
                 equation_container.getChildren().remove(equationBlock);
                 graphPlotter.removeEquation(id);
                 webViewMap.remove(id);
+
+                // Decrement first
                 addEqCount--;
-                if (addEqCount == 0) addEquation();
+
+                // Only add a new one if the container is truly empty
+                // and no other additions are pending
+                if (addEqCount <= 0) {
+                    addEqCount = 0; // Reset to be safe
+                    addEquation();
+                }
             });
             fadeOut.play();
         });
@@ -967,23 +978,23 @@ public class EquatorController {
         // --- Update all existing Equation Cards dynamically ---
         String cardBaseStyle = isLight ?
                 "-fx-background-color: rgba(255,255,255,0.9);" +
-                        "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                        "-fx-border-color: rgba(0,0,0,0.1); -fx-border-width: 1;"
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-border-color: rgba(0,0,0,0.1); -fx-border-width: 1;"
                 :
                 "-fx-background-color: rgba(30,30,50,0.9);" +
-                        "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                        "-fx-border-color: rgba(0,255,255,0.0); -fx-border-width: 1;";
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-border-color: rgba(0,255,255,0.0); -fx-border-width: 1;";
 
         String cardHoverStyle = isLight ?
                 "-fx-background-color: rgba(255,255,255,1.0);" +
-                        "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                        "-fx-border-color: rgba(0,170,221,0.42); -fx-border-width: 1;" +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.4, 0, 0);"
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-border-color: rgba(0,170,221,0.42); -fx-border-width: 1;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0.4, 0, 0);"
                 :
                 "-fx-background-color: rgba(30,30,50,0.95);" +
-                        "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                        "-fx-border-color: rgba(0,255,255,0.42); -fx-border-width: 1;" +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,255,255,0.18), 12, 0.4, 0, 0);";
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-border-color: rgba(0,255,255,0.42); -fx-border-width: 1;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,255,255,0.18), 12, 0.4, 0, 0);";
 
         for (javafx.scene.Node node : equation_container.getChildren()) {
             if (node instanceof VBox equationBlock) {
