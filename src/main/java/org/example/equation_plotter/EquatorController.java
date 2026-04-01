@@ -389,21 +389,19 @@ public class EquatorController {
 
     public void createPolarRangeControls(VBox container, String eqId) {
         EquationData ed = graphPlotter.getEquation(eqId);
-        if (ed == null) return;
+        // Safety check: Only proceed if it is actually Polar
+        if (ed == null || ed.eqType != EquationParser.EqType.Polar) return;
 
         boolean isLight = graphPlotter != null && graphPlotter.isLightMode;
 
         HBox rangeBox = new HBox(8);
         rangeBox.setAlignment(Pos.CENTER_LEFT);
 
-        String captionLabel = (ed.eqType == EquationParser.EqType.Parametric)
-                ? "t range:" : "θ range:";
-        Label caption = new Label(captionLabel);
+        Label caption = new Label("θ range:");
         caption.setStyle(isLight ? "-fx-text-fill: black; -fx-font-size: 12px;" : "-fx-text-fill: white; -fx-font-size: 12px;");
 
-        double maxLimit = (ed.eqType == EquationParser.EqType.Polar) ? Math.PI * 2 : 1.0;
         TextField minField = new TextField("0");
-        TextField maxField = new TextField(String.valueOf(maxLimit));
+        TextField maxField = new TextField(String.valueOf(Math.PI * 2));
         minField.setPrefWidth(80);
         maxField.setPrefWidth(80);
 
@@ -413,6 +411,7 @@ public class EquatorController {
                 (isLight ? "-fx-text-fill: black; -fx-background-color: white;"
                         : "-fx-text-fill: white; -fx-background-color: #2a2a3a;");
         maxField.setStyle(tfStyle);
+        minField.setStyle(tfStyle);
 
         javafx.animation.PauseTransition debounce =
                 new javafx.animation.PauseTransition(Duration.millis(250));
@@ -422,14 +421,9 @@ public class EquatorController {
                 double min = parseAngle(minField.getText());
                 double max = parseAngle(maxField.getText());
 
-                if (ed != null) {
-                    if (ed.eqType == EquationParser.EqType.Polar) {
-                        ed.thetaMin = min;
-                        ed.thetaMax = max;
-                    } else if (ed.eqType == EquationParser.EqType.Parametric) {
-                        ed.tMin = min;
-                        ed.tMax = max;
-                    }
+                if (ed != null && ed.eqType == EquationParser.EqType.Polar) {
+                    ed.thetaMin = min;
+                    ed.thetaMax = max;
 
                     graphPlotter.refreshEquationData(eqId);
                     graphPlotter.draw();
@@ -462,8 +456,7 @@ public class EquatorController {
             if (!n) applyRange.run();
         });
 
-        String middle = (ed.eqType == EquationParser.EqType.Parametric) ? "≤ t ≤" : "≤ θ ≤";
-        Label midLabel = new Label(middle);
+        Label midLabel = new Label("≤ θ ≤");
         midLabel.setStyle(isLight ? "-fx-text-fill: black;" : "-fx-text-fill: white;");
 
         rangeBox.getChildren().addAll(caption, minField, midLabel, maxField);

@@ -1,0 +1,44 @@
+<?xml
+version = "1.0"
+encoding = "UTF-8" ?
+>
+<
+!--
+    WiX
+override
+fragment
+for Equator installer.Place
+at: src / main / installer / overrides.wxs
+Referenced
+by
+jpackage
+via < resourcedir >
+-- >
+< Wix
+xmlns = "http://schemas.microsoft.com/wix/2006/wi" >
+    < Fragment >
+    < !--
+        This
+file
+is
+intentionally
+minimal.jpackage
+generates
+the
+main.wxs;
+this
+is
+merged in
+.
+Actual
+path
+customization
+is
+driven
+by
+jpackage
+flags
+below.
+-- >
+< /Fragment>
+</Wix>

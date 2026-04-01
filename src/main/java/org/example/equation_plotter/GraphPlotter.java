@@ -11,11 +11,8 @@ import javafx.util.Duration;
 
 import java.text.DecimalFormat;
 import java.util.*;
-import java.util.concurrent.ForkJoinPool;
 
 public class GraphPlotter extends StackPane {
-    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
-    private static final ForkJoinPool MAX_POWER_POOL = new ForkJoinPool(CPU_CORES);
     private final Canvas gridCanvas;
     private double graphCenterX = 0;
     private double graphCenterY = 0;
@@ -46,7 +43,8 @@ public class GraphPlotter extends StackPane {
     private final Map<String, CachedImplicit> implicitCache = new HashMap<>();
     private final Map<String, javafx.concurrent.Task<?>> activeTasks = new HashMap<>();
     public boolean isLightMode = false;
-    // ── isDirty: only redraw grid when view state changes ────────────────────
+
+
     private boolean isDirty = true;
 
     public GraphPlotter(double width, double height) {
@@ -282,7 +280,6 @@ public class GraphPlotter extends StackPane {
     }
 
 
-    // ── Cancel all running implicit tasks ────────────────────────────────────
     public void cancelAllTasks() {
         activeTasks.values().forEach(t -> t.cancel(true));
         activeTasks.clear();
@@ -417,7 +414,7 @@ public class GraphPlotter extends StackPane {
         gc.fillText(label, px + 20, py + 20 + 2);
     }
 
-    // ── Cartesian grid — dots for minor, soft lines for major ─────────────────
+
     public void drawCartesianGrid(GraphicsContext gc, double w, double h) {
         double left = graphCenterX - w / 2 / scale;
         double top = graphCenterY - h / 2 / scale;
@@ -433,7 +430,7 @@ public class GraphPlotter extends StackPane {
 
         double majorStep = (fraction < 2.0) ? magnitude
                 : (fraction < 5.0) ? 2 * magnitude
-                : 5 * magnitude;
+                  : 5 * magnitude;
         double minorStep = majorStep / 5.0;
 
         // Minor grid: dots
@@ -472,7 +469,7 @@ public class GraphPlotter extends StackPane {
             gc.strokeLine(0, py, w, py);
             if (Math.abs(y) > 1e-9) {
                 gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
-                double labelX = Math.clamp(yAxisPixel - 15, Math.min(45, w), Math.max(45, w - 5));
+                double labelX = Math.clamp(yAxisPixel - 15, 5, Math.max(5, w - 45));
                 gc.fillText(formatNumber(y), labelX, py);
             }
         }
@@ -579,11 +576,10 @@ public class GraphPlotter extends StackPane {
         final double viewScale = scale;
 
         // --- DYNAMIC RESOLUTION ---
-        // Uses coarser steps while animating to guarantee 60fps on the UI thread
         final double areaMultiplier = 1.4;
         final double fineStep = mainParser.isInequality
-                ? (isParameterAnimating ? 6.0 / viewScale : 2.0 / viewScale)
-                : (isParameterAnimating ? 4.0 / viewScale : 1.0 / viewScale);
+                ? (isParameterAnimating ? 6.0 / viewScale : 1.0 / viewScale)
+                : (isParameterAnimating ? 4.0 / viewScale : 0.5 / viewScale);
         final double coarseStepMath = isParameterAnimating ? 20.0 / viewScale : 10.0 / viewScale;
 
         final double startX = viewCx - (w / viewScale * areaMultiplier) / 2.0;
@@ -596,15 +592,12 @@ public class GraphPlotter extends StackPane {
                 ? (int) ((h / viewScale * areaMultiplier) / fineStep) + 2
                 : (int) ((h / viewScale * areaMultiplier) / coarseStepMath) + 1;
 
-        // Wrap the geometry generation so it can be called synchronously OR asynchronously
         java.util.function.Supplier<List<double[]>> geometryBuilder = () -> {
             List<double[]> geometries = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-            int sub = isParameterAnimating ? 5 : 10; // 25x faster loop during animation
+            int sub = isParameterAnimating ? 5 : 10;
 
             if (mainParser.isInequality) {
                 java.util.stream.IntStream.range(0, (mRows - 1) * (mCols - 1)).parallel().forEach(i -> {
-                    // ... (KEEP YOUR EXISTING INEQUALITY SWITCH/CASE LOGIC HERE) ...
-                    // Example (abbreviated):
                     int c = i % (mCols - 1), r = i / (mCols - 1);
                     double x = startX + c * fineStep;
                     double y = startY - r * fineStep;
@@ -690,7 +683,6 @@ public class GraphPlotter extends StackPane {
                 });
             } else {
                 java.util.stream.IntStream.range(0, (mRows - 1) * (mCols - 1)).parallel().forEach(i -> {
-                    // ... (KEEP YOUR EXISTING STANDARD IMPLICIT LOOP HERE) ...
                     int c = i % (mCols - 1), r = i / (mCols - 1);
                     double bx = startX + c * coarseStepMath, by = startY - r * coarseStepMath;
                     for (int fr = 0; fr < sub; fr++) {
@@ -717,7 +709,7 @@ public class GraphPlotter extends StackPane {
                             else if (s == 5) {
                                 geometries.add(new double[]{x, flY, ftX, y});
                                 geometries.add(new double[]{fbX, y - fineStep, x + fineStep, frY});
-                            } else if (s == 10) {
+                            } else {
                                 geometries.add(new double[]{ftX, y, x + fineStep, frY});
                                 geometries.add(new double[]{x, flY, fbX, y - fineStep});
                             }
@@ -900,20 +892,41 @@ public class GraphPlotter extends StackPane {
         gc.beginPath();
         gc.setStroke(data.color);
         gc.setLineWidth(2.5);
-        boolean first = true;
+
         if (data.CacheX != null && data.CacheY != null) {
+            boolean first = true;
+            double prevPx = 0;
+            double prevPy = 0;
+
             for (int i = 0; i < data.CacheX.length; i++) {
                 double x = data.CacheX[i], y = data.CacheY[i];
-                if (Double.isNaN(x) || Double.isNaN(y)) {
+
+                // Break path for undefined/infinity points
+                if (Double.isNaN(x) || Double.isNaN(y) || Double.isInfinite(x) || Double.isInfinite(y)) {
                     first = true;
                     continue;
                 }
+
                 double px = (x - graphCenterX) * scale + w / 2.0;
                 double py = h / 2.0 - (y - graphCenterY) * scale;
+
                 if (first) {
                     gc.moveTo(px, py);
                     first = false;
-                } else gc.lineTo(px, py);
+                } else {
+                    boolean hugeJumpX = Math.abs(px - prevPx) > (w * 0.6);
+                    boolean hugeJumpY = Math.abs(py - prevPy) > (h * 0.6);
+
+                    if (hugeJumpX || hugeJumpY) {
+                        gc.stroke();
+                        gc.beginPath();
+                        gc.moveTo(px, py);
+                    } else {
+                        gc.lineTo(px, py);
+                    }
+                }
+                prevPx = px;
+                prevPy = py;
             }
             gc.stroke();
         }
@@ -927,22 +940,42 @@ public class GraphPlotter extends StackPane {
         // If we have cached X/Y arrays use them (fast)
         if (data.CacheX != null && data.CacheY != null) {
             boolean first = true;
+            double prevPx = 0;
+            double prevPy = 0;
+
             for (int i = 0; i < data.CacheX.length; i++) {
                 double x = data.CacheX[i], y = data.CacheY[i];
-                if (Double.isNaN(x) || Double.isNaN(y)) {
+
+
+                if (Double.isNaN(x) || Double.isNaN(y) || Double.isInfinite(x) || Double.isInfinite(y)) {
                     first = true;
                     continue;
                 }
+
                 double px = (x - graphCenterX) * scale + w / 2.0;
                 double py = h / 2.0 - (y - graphCenterY) * scale;
+
                 if (first) {
                     gc.moveTo(px, py);
                     first = false;
-                } else gc.lineTo(px, py);
+                } else {
+
+                    boolean hugeJumpX = Math.abs(px - prevPx) > (w * 0.6);
+                    boolean hugeJumpY = Math.abs(py - prevPy) > (h * 0.6);
+
+                    if (hugeJumpX || hugeJumpY) {
+                        gc.stroke();
+                        gc.beginPath();
+                        gc.moveTo(px, py);
+                    } else {
+                        gc.lineTo(px, py);
+                    }
+                }
+                prevPx = px;
+                prevPy = py;
             }
             gc.stroke();
         }
-
     }
 
     public void toggleGrid() {
@@ -979,8 +1012,8 @@ public class GraphPlotter extends StackPane {
         // default theta and t range:
         data.thetaMin = 0;
         data.thetaMax = 2 * Math.PI;
-        data.tMin = 0;
-        data.tMax = 1.0;
+        data.tMin = -100.0;
+        data.tMax = 100.0;
 
         // clear caches & active tasks (existing code)
         implicitCache.remove(id);
@@ -1018,7 +1051,7 @@ public class GraphPlotter extends StackPane {
         double fraction = rawStepUnits / magnitude;
         double majorStepUnits = (fraction < 2.0) ? magnitude
                 : (fraction < 5.0) ? 2 * magnitude
-                : 5 * magnitude;
+                  : 5 * magnitude;
         double minorStepUnits = majorStepUnits / 5.0;
         double majorStepPx = majorStepUnits * scale;
         double minorStepPx = minorStepUnits * scale;
@@ -1076,7 +1109,7 @@ public class GraphPlotter extends StackPane {
             double py = h / 2 - (y - graphCenterY) * scale;
             if (Math.abs(y) > 1e-9) {
                 gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
-                double labelX = Math.clamp(yAxisPixel - 15, Math.min(45, w), Math.max(45, w - 5));
+                double labelX = Math.clamp(yAxisPixel - 15, 5, Math.max(5, w - 45));
                 gc.fillText(formatNumber(y), labelX, py);
             }
         }

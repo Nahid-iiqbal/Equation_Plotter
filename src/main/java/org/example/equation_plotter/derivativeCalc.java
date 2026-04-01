@@ -5,14 +5,9 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
-import org.matheclipse.core.eval.ExprEvaluator;
-import org.matheclipse.core.interfaces.IExpr;
 
 import java.util.Objects;
-import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class derivativeCalc {
 
@@ -31,46 +26,62 @@ public class derivativeCalc {
         this.isLightMode = isLight;
     }
 
-    // ── Trig bracket normalizer ───────────────────────────────────────────────
-    // Symja needs sin(x) not sinx — this ensures arguments are wrapped
-    public static String addBracketsToTrig(String input) {
-        if (input == null || input.isEmpty()) return input;
-
-        String regex = "(sin|cos|tan|sec|csc|cot|asin|acos|atan|log|ln)\\s*([xy\\d.]+)";
-        Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
-        Matcher matcher = pattern.matcher(input);
-
-        StringBuilder sb = new StringBuilder();
-        int lastEnd = 0;
-        while (matcher.find()) {
-            sb.append(input, lastEnd, matcher.start());
-            sb.append(matcher.group(1)).append("(").append(matcher.group(2)).append(")");
-            lastEnd = matcher.end();
-        }
-        sb.append(input.substring(lastEnd));
-        return sb.toString();
-    }
-
-    // ── Derivative calculation ────────────────────────────────────────────────
     public void calculateDer() {
         if (eqn.parser == null || eqn.eqType != EquationParser.EqType.Explicit) return;
 
-        String rawInput = addBracketsToTrig(eqn.raw);
-        String derivativeString = SymbolicMathUtils.getDerivative(rawInput);
-
         derivativeEqnData = new EquationData();
-        derivativeEqnData.raw = derivativeString;
-        derivativeEqnData.parser = new EquationParser(derivativeString);
+        derivativeEqnData.eqType = EquationParser.EqType.Explicit;
+
+        // 1. Get Symbolic Derivative for Display
+        String displayLabel;
+        try {
+            org.matheclipse.core.expression.F.initSymbols();
+            org.matheclipse.core.eval.ExprEvaluator util =
+                    new org.matheclipse.core.eval.ExprEvaluator(false, (short) 100);
+
+            String symjaInput = toSymjaSyntax(eqn.raw);
+            LOGGER.info("Symja input: " + symjaInput);
+
+            String symjaResult = util.eval("D(" + symjaInput + ", x)").toString();
+            LOGGER.info("Symja output: " + symjaResult);
+
+            if (symjaResult.startsWith("Hold(") || symjaResult.startsWith("D(")) {
+                displayLabel = "d/dx(" + eqn.raw + ")";
+            } else {
+                displayLabel = toDisplaySyntax(symjaResult);
+            }
+        } catch (Throwable t) {
+            displayLabel = "d/dx(" + eqn.raw + ")";
+            LOGGER.warning("Symja failed: " + t.getMessage());
+        }
+        derivativeEqnData.raw = displayLabel;
+
+        // 2. Numerical Differentiation for Plotting
+        final EquationParser originalParser = eqn.parser;
+        final double h = 1e-7;
+
+        derivativeEqnData.parser = new EquationParser("x") {
+            @Override
+            public double evaluateExplicit(double x) {
+                // Central Difference Formula: [f(x+h) - f(x-h)] / 2h
+                double f1 = originalParser.evaluateExplicit(x + h);
+                double f2 = originalParser.evaluateExplicit(x - h);
+
+                if (Double.isNaN(f1) || Double.isNaN(f2)) return Double.NaN;
+                return (f1 - f2) / (2.0 * h);
+            }
+        };
+
+        // Build the cache for the UI thread
         derivativeEqnData.buildCacheExplicit(screenMinX, screenMaxX, 10000);
     }
 
-    // ── Interactive derivative window ─────────────────────────────────────────
     public void showInNewWindow() {
         calculateDer();
         if (derivativeEqnData == null) return;
 
         Stage stage = new Stage();
-        stage.setTitle("Derivative: f'(x) = " + derivativeEqnData.raw);
+        stage.setTitle("Derivative: f'(x)");
 
         GraphPlotter localPlotter = new GraphPlotter(1200, 800);
 
@@ -81,13 +92,15 @@ public class derivativeCalc {
         localPlotter.addEquationToHashmap("original", temp.raw, temp.color);
         localPlotter.addEquationToHashmap("derivative", derivativeEqnData.raw, derivativeEqnData.color);
 
-        // ── Legend via postDrawAction — always on top ─────────────────────────
-        final String origRaw = eqn.raw;
-        final String derRaw = derivativeEqnData.raw;
+        // Manually override the derivative equation data with our numerical one
+        localPlotter.getEquation("derivative").parser = derivativeEqnData.parser;
+        localPlotter.refreshEquationData("derivative");
 
+        final String origRaw = eqn.raw;
+        final String derDisplay = derivativeEqnData.raw;
         localPlotter.setPostDrawAction(() -> drawLegend(
                 localPlotter.getGraphCanvas().getGraphicsContext2D(),
-                origRaw, derRaw));
+                origRaw, derDisplay));
 
         StackPane root = new StackPane(localPlotter);
         Scene scene = new Scene(root, 1200, 800);
@@ -100,18 +113,13 @@ public class derivativeCalc {
         stage.show();
     }
 
-    // ── Legend drawing — extracted for clarity ────────────────────────────────
     private void drawLegend(GraphicsContext gc, String origRaw, String derRaw) {
-        double boxX = 14;
-        double boxY = 14;
-        double boxW = Math.max(220,
-                Math.max(origRaw.length(), derRaw.length()) * 8.0 + 60);
+        double boxX = 14, boxY = 14;
+        double boxW = Math.max(220, Math.max(origRaw.length(), derRaw.length()) * 8.0 + 60);
         double boxH = 62;
 
         gc.setFill(isLightMode ? Color.web("#f5f5f5", 0.95) : Color.web("#0d0d1a", 0.88));
         gc.fillRoundRect(boxX, boxY, boxW, boxH, 10, 10);
-
-        // Border
         gc.setStroke(isLightMode ? Color.web("#cccccc", 0.8) : Color.web("#00FFFF", 0.25));
         gc.setLineWidth(1);
         gc.strokeRoundRect(boxX, boxY, boxW, boxH, 10, 10);
@@ -120,36 +128,84 @@ public class derivativeCalc {
         gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
         gc.setTextBaseline(javafx.geometry.VPos.CENTER);
 
-        // f(x) — green swatch + label
         gc.setFill(Color.web("#1EF737"));
         gc.fillRect(boxX + 10, boxY + 18, 18, 3);
-        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE); // Swap text color
+        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE);
         gc.fillText("f(x)  = " + origRaw, boxX + 34, boxY + 20);
 
-        // f'(x) — red swatch + label
         gc.setFill(Color.web("#ed2d63"));
         gc.fillRect(boxX + 10, boxY + 40, 18, 3);
-        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE); // Swap text color
+        gc.setFill(isLightMode ? Color.BLACK : Color.WHITE);
         gc.fillText("f'(x) = " + derRaw, boxX + 34, boxY + 42);
     }
 
-    // ── Symbolic differentiation via Symja ────────────────────────────────────
-    public static class SymbolicMathUtils {
-        public static String getDerivative(String rawInput) {
-            try {
-                ExprEvaluator util = new ExprEvaluator();
-                IExpr result = util.eval("diff(" + rawInput + ", x)");
+    /**
+     * Converts mXparser-style syntax to Symja-style syntax for input.
+     * e.g. sin(x) → Sin[x], x^2 → x^2, ln(x) → Log[x]
+     */
+    private String toSymjaSyntax(String raw) {
+        return raw
+                // Functions: parentheses → square brackets, names capitalized
+                .replaceAll("\\bsin\\(", "Sin[")
+                .replaceAll("\\bcos\\(", "Cos[")
+                .replaceAll("\\btan\\(", "Tan[")
+                .replaceAll("\\barcsin\\(", "ArcSin[")
+                .replaceAll("\\barccos\\(", "ArcCos[")
+                .replaceAll("\\barctan\\(", "ArcTan[")
+                .replaceAll("\\bsinh\\(", "Sinh[")
+                .replaceAll("\\bcosh\\(", "Cosh[")
+                .replaceAll("\\btanh\\(", "Tanh[")
+                .replaceAll("\\bsec\\(", "Sec[")
+                .replaceAll("\\bcsc\\(", "Csc[")
+                .replaceAll("\\bcot\\(", "Cot[")
+                .replaceAll("\\bsqrt\\(", "Sqrt[")
+                .replaceAll("\\babs\\(", "Abs[")
+                .replaceAll("\\bexp\\(", "Exp[")
+                .replaceAll("\\bln\\(", "Log[")
+                .replaceAll("\\blog\\(", "Log[10,")
+                // Close brackets: replace ) with ] only for converted functions
+                // Safe approach: replace all ) with ] after function conversion
+                .replace(")", "]")
+                // Constants
+                .replaceAll("\\be\\b", "E")
+                .replaceAll("\\bpi\\b", "Pi");
+    }
 
-                String der = result.toString();
-                der = der.toLowerCase();           // Sin -> sin
-                der = der.replace(" ", "*");        // 3 x -> 3*x
-
-                return der;
-            } catch (Exception e) {
-                Logger.getLogger(SymbolicMathUtils.class.getName())
-                        .log(Level.WARNING, "Failed to compute derivative of: " + rawInput, e);
-                return "0";
-            }
-        }
+    /**
+     * Converts Symja output back to clean display syntax.
+     * e.g. Cos[x] → cos(x), 2*x → 2x, Sin[x]^2 → sin(x)^2
+     */
+    private String toDisplaySyntax(String symjaResult) {
+        return symjaResult
+                // Functions: square brackets → parentheses, names lowercased
+                .replaceAll("ArcSin\\[", "arcsin(")
+                .replaceAll("ArcCos\\[", "arccos(")
+                .replaceAll("ArcTan\\[", "arctan(")
+                .replaceAll("Sinh\\[", "sinh(")
+                .replaceAll("Cosh\\[", "cosh(")
+                .replaceAll("Tanh\\[", "tanh(")
+                .replaceAll("Sin\\[", "sin(")
+                .replaceAll("Cos\\[", "cos(")
+                .replaceAll("Tan\\[", "tan(")
+                .replaceAll("Sec\\[", "sec(")
+                .replaceAll("Csc\\[", "csc(")
+                .replaceAll("Cot\\[", "cot(")
+                .replaceAll("Sqrt\\[", "sqrt(")
+                .replaceAll("Abs\\[", "abs(")
+                .replaceAll("Exp\\[", "exp(")
+                .replaceAll("Log\\[10,", "log(")
+                .replaceAll("Log\\[", "ln(")
+                // Close brackets back to parentheses
+                .replace("]", ")")
+                // Clean up multiplication signs for display
+                .replaceAll("\\*1\\b", "")          // trailing *1
+                .replaceAll("\\b1\\*", "")          // leading 1*
+                .replaceAll("(?<=\\d)\\*(?=[a-z])", "") // 2*x → 2x
+                .replaceAll("(?<=[a-z])\\*(?=[a-z])", "") // x*y → xy (optional)
+                // Constants
+                .replace("E", "e")
+                .replace("Pi", "π")
+                .toLowerCase()
+                .trim();
     }
 }

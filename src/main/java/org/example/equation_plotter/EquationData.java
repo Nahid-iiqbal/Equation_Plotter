@@ -62,7 +62,7 @@ public class EquationData {
         if (parser.eqtype == EquationParser.EqType.Implicit) return;
         double visibleWidth = visibleMaxX - visibleMinX;
         double bufferWidth = visibleWidth * 3;
-        size = (int) (width * 3 * 2);
+        size = (int) (width * 3 * 4);
         step = bufferWidth / size;
         xStart = visibleMinX - visibleWidth;
         yCache = new double[size];
@@ -76,7 +76,7 @@ public class EquationData {
     public void buildCachePolar(double thetaMin, double thetaMax, double width) {
         if (eqType != EquationParser.EqType.Polar || parser == null) return;
 
-        // number of samples: base on pixel width * factor for smoothness
+
         int samples = Math.max(200, (int) (width * 1.5));
         CacheX = new double[samples + 1];
         CacheY = new double[samples + 1];
@@ -96,13 +96,13 @@ public class EquationData {
     }
 
     public void buildCacheParametric(double t0, double t1, double width) {
-        // determine number of samples relative to pixel width (oversample a bit)
+
         int samples = Math.max(300, (int) (width * 1.5));
         double[] xs = new double[samples + 1];
         double[] ys = new double[samples + 1];
         for (int i = 0; i <= samples; i++) {
             double t = t0 + (t1 - t0) * i / (double) samples;
-            // prefer parser-provided evaluator:
+
             double[] p = this.parser.evaluateParametric(t);
             double x, y;
             if (p != null && !Double.isNaN(p[0]) && !Double.isNaN(p[1])) {
