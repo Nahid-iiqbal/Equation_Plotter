@@ -85,6 +85,10 @@ public class EquationParser {
                 eqtype = EqType.Explicit;
             }
 
+            String type = eqtype == EqType.Explicit ? "Explicit" : "Implicit";
+            System.out.println(mathPart + ' ' + type);
+
+
             // For parametric, detect free parameters from the component expressions, not raw mathPart
             if (eqtype == EqType.Parametric) {
                 detectParameters(paramX + "," + paramY);

@@ -522,13 +522,13 @@ public class GraphPlotter extends StackPane {
 
         // Major rings
         gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
-        gc.setLineWidth(0.5);
+        gc.setLineWidth(0.1);
         for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx)
             gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
 
         // Spokes
         gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
-        gc.setLineWidth(0.5);
+        gc.setLineWidth(0.1);
         int degreesStep = 15;
         for (int deg = 0; deg < 360; deg += degreesStep) {
             double ang = Math.toRadians(deg);
@@ -686,8 +686,8 @@ public class GraphPlotter extends StackPane {
         // --- DYNAMIC RESOLUTION ---
         final double areaMultiplier = 1.4;
         final double fineStep = mainParser.isInequality
-                ? (isParameterAnimating ? 6.0 / viewScale : 1.0 / viewScale)
-                : (isParameterAnimating ? 4.0 / viewScale : 0.5 / viewScale);
+                ? (isParameterAnimating ? 6.0 / viewScale : 2.0 / viewScale)
+                : (isParameterAnimating ? 4.0 / viewScale : 1.0 / viewScale);
         final double coarseStepMath = isParameterAnimating ? 20.0 / viewScale : 10.0 / viewScale;
 
         final double startX = viewCx - (w / viewScale * areaMultiplier) / 2.0;
