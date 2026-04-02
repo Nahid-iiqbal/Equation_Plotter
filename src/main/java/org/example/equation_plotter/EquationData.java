@@ -22,15 +22,14 @@ public class EquationData {
     public double thetaMin = 0;
     public double tMin = 0.0;
     public double thetaMax = 2 * Math.PI;
-    public double tMax = 1.0;
+    public double tMax = 2 * Math.PI;
 
 
     // caches for polar and parametrix
     public double[] CacheX;
     public double[] CacheY;
 
-    public EquationData() {
-    }
+    public EquationData() {}
 
     public EquationData(EquationData data) {
         this.raw = data.raw;
@@ -62,7 +61,7 @@ public class EquationData {
         if (parser.eqtype == EquationParser.EqType.Implicit) return;
         double visibleWidth = visibleMaxX - visibleMinX;
         double bufferWidth = visibleWidth * 3;
-        size = (int) (width * 3 * 2);
+        size = (int) (width * 3 * 10);
         step = bufferWidth / size;
         xStart = visibleMinX - visibleWidth;
         yCache = new double[size];
@@ -96,27 +95,33 @@ public class EquationData {
     }
 
     public void buildCacheParametric(double t0, double t1, double width) {
-        // determine number of samples relative to pixel width (oversample a bit)
-        int samples = Math.max(300, (int) (width * 1.5));
-        double[] xs = new double[samples + 1];
-        double[] ys = new double[samples + 1];
-        for (int i = 0; i <= samples; i++) {
-            double t = t0 + (t1 - t0) * i / (double) samples;
-            // prefer parser-provided evaluator:
-            double[] p = this.parser.evaluateParametric(t);
-            double x, y;
-            if (p != null && !Double.isNaN(p[0]) && !Double.isNaN(p[1])) {
-                x = p[0];
-                y = p[1];
-                xs[i] = x;
-                ys[i] = y;
+        if (parser.eqtype != EquationParser.EqType.Parametric || parser == null) return;
+
+        double stepSize = 0.01;
+        double deltaT = t1 - t0;
+        int samples = (int) Math.ceil(Math.abs(deltaT) / stepSize) + 1;
+
+        CacheX = new double[samples];
+        CacheY = new double[samples];
+
+        for (int i = 0; i < samples; i++) {
+            // Linear interpolation of t to ensure precision at the bounds
+            double t = t0 + (i * stepSize);
+            if (deltaT > 0 && t > t1) t = t1;
+            if (deltaT < 0 && t < t1) t = t1;
+
+            double[] p = parser.evaluateParametric(t);
+
+            // Fail-safe: Store NaN for non-real coordinates to prevent rendering artifacts
+            if (p == null || Double.isNaN(p[0]) || Double.isNaN(p[1]) ||
+                    Double.isInfinite(p[0]) || Double.isInfinite(p[1])) {
+                CacheX[i] = Double.NaN;
+                CacheY[i] = Double.NaN;
             } else {
-                xs[i] = Double.NaN;
-                ys[i] = Double.NaN;
+                CacheX[i] = p[0];
+                CacheY[i] = p[1];
             }
         }
-        this.CacheX = xs;
-        this.CacheY = ys;
     }
 
 

@@ -64,8 +64,9 @@ public class EquationParser {
                 if (splitAt == -1) throw new RuntimeException("Invalid parametric");
 
                 // Extract between outer parens using splitAt
-                this.paramX = mathPart.substring(1, splitAt).trim().replace("t", "x");
-                this.paramY = mathPart.substring(splitAt + 1, mathPart.length() - 1).trim().replace("t", "x");
+                // \b ensures we only replace 't' as a standalone variable, ignoring letters inside words
+                this.paramX = mathPart.substring(1, splitAt).trim().replaceAll("\\bt\\b", "x");
+                this.paramY = mathPart.substring(splitAt + 1, mathPart.length() - 1).trim().replaceAll("\\bt\\b", "x");
 
                 System.out.println("Parametric: " + this.paramX + ", " + this.paramY + " " + eqtype);
 
@@ -74,7 +75,7 @@ public class EquationParser {
                 // extract right-hand side after r=
                 String rhs = mathPart.substring(mathPart.indexOf('=') + 1).trim();
                 // normalize theta tokens so parser sees x as the variable (theta -> x)
-                rhs = rhs.replace("θ", "t").replace("t", "x");
+                rhs = rhs.replaceAll("\\bt\\b", "x");
                 // Also replace standalone 't' with 'x' (word boundary)
 //                rhs = rhs.replaceAll("\\t\\b", "x");
                 mathPart = rhs;

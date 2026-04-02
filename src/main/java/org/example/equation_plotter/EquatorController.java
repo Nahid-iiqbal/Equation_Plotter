@@ -401,7 +401,7 @@ public class EquatorController {
         Label caption = new Label(captionLabel);
         caption.setStyle(isLight ? "-fx-text-fill: black; -fx-font-size: 12px;" : "-fx-text-fill: white; -fx-font-size: 12px;");
 
-        double maxLimit = (ed.eqType == EquationParser.EqType.Polar) ? Math.PI * 2 : 1.0;
+        double maxLimit = Math.PI * 2;
         TextField minField = new TextField("0");
         TextField maxField = new TextField(String.valueOf(maxLimit));
         minField.setPrefWidth(80);
