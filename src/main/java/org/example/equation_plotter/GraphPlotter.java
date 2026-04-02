@@ -1,5 +1,5 @@
 package org.example.equation_plotter;
-
+// ignore this commit
 import javafx.animation.PauseTransition;
 import javafx.geometry.Point2D;
 import javafx.scene.canvas.Canvas;
