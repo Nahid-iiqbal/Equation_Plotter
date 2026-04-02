@@ -2,6 +2,7 @@ package org.example.equation_plotter;
 
 import javafx.scene.control.ColorPicker;
 import javafx.scene.layout.VBox;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -28,6 +29,40 @@ public class MathBridge {
                 javafx.util.Duration.millis(300));
     }
 
+    private static @NotNull String getJavaMath(String text) {
+        String javaMath = text.toLowerCase()
+                .replaceAll("\\\\pi", String.valueOf(Math.PI))
+                .replaceAll("\\\\theta", "θ")
+                .replaceAll("\\\\left\\(", "(").replaceAll("\\\\right\\)", ")")
+                .replaceAll("\\\\leq?", "<=")
+                .replaceAll("\\\\geq?", ">=")
+                .replaceAll("\\\\frac\\{([^{}]*)}\\{([^{}]*)}", "($1)/($2)")
+                .replaceAll("\\\\left|\\\\right", "")
+                .replaceAll("\\\\cdot", "*")
+                .replaceAll("\\\\times", "*")
+                .replaceAll("\\\\div", "/")
+                .replaceAll("\\\\sqrt\\{([^{}]*)}", "sqrt($1)")
+                .replaceAll("\\\\([a-z]+)", "$1")  // \sin→sin, \cos→cos etc.
+                .replaceAll("[{}]", "")
+                .replaceAll("\\s+", "");
+
+
+        // Pattern: single letter that is NOT part of a known function, followed by a function name
+        javaMath = javaMath.replaceAll(
+                "([a-z])(?=(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sec|csc|cot|log|ln|sqrt|exp|abs|floor|ceil|round)(?![a-z]))",
+                "$1*"
+        );
+
+        // Handle coefficient*variable: digit followed by letter
+        javaMath = javaMath.replaceAll("(\\d)([a-z])", "$1*$2");
+
+        // Only insert * if the letter is a single char not preceded by another letter (i.e. not a func name)
+        javaMath = javaMath.replaceAll(
+                "(?<![a-z])([a-z])\\((?!(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sec|csc|cot|log|ln|sqrt|exp|abs))",
+                "$1*(");
+        return javaMath;
+    }
+
     public void updateMath(String rawMath) {
         debounceTimer.setOnFinished(e -> {
             String text = rawMath.trim();
@@ -36,35 +71,7 @@ public class MathBridge {
                 sliderBox.getChildren().clear();
             } else {
                 try {
-                    String javaMath = text.toLowerCase()
-                            .replaceAll("\\\\pi", String.valueOf(Math.PI))
-                            .replaceAll("\\\\theta", "x")
-                            .replaceAll("\\\\left|\\\\right", "")
-                            .replaceAll("\\\\leq?", "<=")
-                            .replaceAll("\\\\geq?", ">=")
-                            .replaceAll("\\\\frac\\{([^{}]*)}\\{([^{}]*)}", "($1)/($2)")
-                            .replaceAll("\\\\cdot", "*")
-                            .replaceAll("\\\\times", "*")
-                            .replaceAll("\\\\div", "/")
-                            .replaceAll("\\\\sqrt\\{([^{}]*)}", "sqrt($1)")
-                            .replaceAll("\\\\([a-z]+)", "$1")  // \sin→sin, \cos→cos etc.
-                            .replaceAll("[{}]", "")
-                            .replaceAll("\\s+", "");
-
-
-                    // Pattern: single letter that is NOT part of a known function, followed by a function name
-                    javaMath = javaMath.replaceAll(
-                            "([a-z])(?=(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sec|csc|cot|log|ln|sqrt|exp|abs|floor|ceil|round)(?![a-z]))",
-                            "$1*"
-                    );
-
-                    // Handle coefficient*variable: digit followed by letter
-                    javaMath = javaMath.replaceAll("(\\d)([a-z])", "$1*$2");
-
-                    // Only insert * if the letter is a single char not preceded by another letter (i.e. not a func name)
-                    javaMath = javaMath.replaceAll(
-                            "(?<![a-z])([a-z])\\((?!(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sec|csc|cot|log|ln|sqrt|exp|abs))",
-                            "$1*(");
+                    String javaMath = getJavaMath(text);
 
                     EquationParser parser = new EquationParser(javaMath);
                     plotter.addEquationToHashmap(equationId, javaMath, cp.getValue(),
@@ -76,8 +83,8 @@ public class MathBridge {
                     EquationData data = plotter.getEquation(equationId);
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
-                        if (data.eqType == EquationParser.EqType.Polar
-                                || data.eqType == EquationParser.EqType.Parametric) {
+
+                        if (data.eqType == EquationParser.EqType.Polar) {
                             controller.createPolarRangeControls(sliderBox, equationId);
                         }
                     }

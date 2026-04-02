@@ -29,7 +29,8 @@ public class EquationData {
     public double[] CacheX;
     public double[] CacheY;
 
-    public EquationData() {}
+    public EquationData() {
+    }
 
     public EquationData(EquationData data) {
         this.raw = data.raw;
@@ -75,7 +76,7 @@ public class EquationData {
     public void buildCachePolar(double thetaMin, double thetaMax, double width) {
         if (eqType != EquationParser.EqType.Polar || parser == null) return;
 
-        // number of samples: base on pixel width * factor for smoothness
+
         int samples = Math.max(200, (int) (width * 1.5));
         CacheX = new double[samples + 1];
         CacheY = new double[samples + 1];

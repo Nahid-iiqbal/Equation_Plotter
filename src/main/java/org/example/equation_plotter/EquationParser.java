@@ -20,9 +20,9 @@ public class EquationParser {
     private boolean isValid = true;
     public boolean isInequality = false;
     private String paramX, paramY;
+    private Points points;
 
     public EquationParser(String fullInput) {
-
         try {
             Pattern pointPattern = Pattern.compile("^\\s*\\((-?\\d+\\.?\\d*)\\s*,\\s*(-?\\d+\\.?\\d*)\\)\\s*$");
             Matcher pointMatcher = pointPattern.matcher(fullInput);
@@ -68,17 +68,9 @@ public class EquationParser {
                 this.paramX = mathPart.substring(1, splitAt).trim().replaceAll("\\bt\\b", "x");
                 this.paramY = mathPart.substring(splitAt + 1, mathPart.length() - 1).trim().replaceAll("\\bt\\b", "x");
 
-                System.out.println("Parametric: " + this.paramX + ", " + this.paramY + " " + eqtype);
-
-            } else if (mathPart.matches("^r\\s*=.*")) {
+            } else if (mathPart.matches("^r(?:\\s*\\([a-zθ]+\\))?\\s*=.*")) {
                 eqtype = EqType.Polar;
-                // extract right-hand side after r=
-                String rhs = mathPart.substring(mathPart.indexOf('=') + 1).trim();
-                // normalize theta tokens so parser sees x as the variable (theta -> x)
-                rhs = rhs.replaceAll("\\bt\\b", "x");
-                // Also replace standalone 't' with 'x' (word boundary)
-//                rhs = rhs.replaceAll("\\t\\b", "x");
-                mathPart = rhs;
+                mathPart = mathPart.substring(mathPart.indexOf('=') + 1).trim();
             } else if (mathPart.contains("=")) {
                 String[] parts = mathPart.split("=");
                 if (parts.length == 2) {
@@ -91,7 +83,12 @@ public class EquationParser {
                 eqtype = EqType.Explicit;
             }
 
-            detectParameters(mathPart);
+            // For parametric, detect free parameters from the component expressions, not raw mathPart
+            if (eqtype == EqType.Parametric) {
+                detectParameters(paramX + "," + paramY);
+            } else {
+                detectParameters(mathPart);
+            }
 
             // Compile string into blazing fast Java Lambdas
             if (eqtype == EqType.Parametric) {
@@ -132,36 +129,20 @@ public class EquationParser {
         }
     }
 
-
-    private Points points;
-
-    private void detectParameters(String expr) {
-        parameters.clear(); // Ensure old sliders are removed
-
-        // Ensure all multi-letter functions are stripped before checking for variables
-        String cleanedExpr = expr.toLowerCase()
-                .replaceAll("arc|sec|csc|cot|sin|cos|tan|sqrt|cbrt|abs|log|ln|exp|floor|ceil|round|sign|pi", "");
-
-        Pattern p = Pattern.compile("[a-z]");
-        Matcher m = p.matcher(cleanedExpr);
-        while (m.find()) {
-            char c = m.group().charAt(0);
-            if (c == 'x' || c == 'y' || c == 'e' || c == 'r' || c == 't') continue;
-
-            parameters.put(c, new Parameter());
-        }
+    private static boolean containsParametricVar(String expr) {
+        // [pt] matches either p or t as standalone letters
+        return expr.matches(".*(?<![a-z])[pt](?![a-z]).*") || expr.contains("θ");
     }
 
-    public double evaluatePolar(double theta) {
-        if (!isValid || eqtype != EqType.Polar || mathExpr == null) return Double.NaN;
-        try {
-            // treat parser x as theta
-            double r = mathExpr.eval(theta, 0);
-            // Note: for polar domain restrictions we will use EquationData.thetaMin/max (UI-driven)
-            return r;
-        } catch (Exception e) {
-            return Double.NaN;
+    private static boolean hasTopLevelComma(String expr) {
+        int depth = 0;
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == ',' && depth == 1) return true;
         }
+        return false;
     }
 
     public EquationParser cloneForThread() {
@@ -209,38 +190,57 @@ public class EquationParser {
 
     public enum EqType {Implicit, Explicit, Polar, Parametric}
 
-    public double[] evaluateParametric(double t) {
-        double[] nan = {Double.NaN, Double.NaN};
-        if (!isValid) return nan;
+    private void detectParameters(String expr) {
+        parameters.clear(); // Ensure old sliders are removed
 
-        try {
-            double px = paramXExpr.eval(t, 0);
-            double py = paramYExpr.eval(t, 0);
-            double r[] = {px, py};
+        // Ensure all multi-letter functions are stripped before checking for variables
+        String cleanedExpr = expr.toLowerCase()
+                .replaceAll("arc|sec|csc|cot|sin|cos|tan|sqrt|cbrt|abs|log|ln|exp|floor|ceil|round|sign|pi", "");
 
-            return r;
+        Pattern p = Pattern.compile("[a-zθ]");
+        Matcher m = p.matcher(cleanedExpr);
+        while (m.find()) {
+            char c = m.group().charAt(0);
+            if (c == 'x' || c == 'y' || c == 'e' || c == 'r' || c == 'p' || c == 'θ' || c == 't') continue;
 
-        } catch (Exception e) {
-            return nan;
+            parameters.put(c, new Parameter());
         }
-    }
-
-    public boolean isValid() {
-        return isValid;
     }
 
     public Map<Character, Parameter> getParameters() {
         return parameters;
     }
 
+    public double evaluatePolar(double theta) {
+        if (!isValid || eqtype != EqType.Polar || mathExpr == null) return Double.NaN;
+        try {
+            return mathExpr.eval(theta, 0);
+        } catch (Exception e) {
+            return Double.NaN;
+        }
+    }
+
+    public double[] evaluateParametric(double p) {
+        double[] nan = {Double.NaN, Double.NaN};
+        if (!isValid) return nan;
+
+        try {
+            double px = paramXExpr.eval(p, 0);
+            double py = paramYExpr.eval(p, 0);
+            return new double[]{px, py};
+
+        } catch (Exception e) {
+            return nan;
+        }
+    }
+
     private String formatLimit(String limit) {
-        String pattern = "([\\w\\d.]+)\\s*(<=|>=|<|>)\\s*([a-zA-Z])\\s*(<=|>=|<|>)\\s*([\\w\\d.]+)";
+        String pattern = "([\\w.]+)\\s*(<=|>=|<|>)\\s*([a-zA-Z])\\s*(<=|>=|<|>)\\s*([\\w.]+)";
         return limit.replaceAll(pattern, "$1 $2 $3 && $3 $4 $5")
                 .replace(",", " && ")
                 .replace("and", " && ");
     }
 
-    // --- NATIVE AST INTERFACES ---
     @FunctionalInterface
     public interface Node {
         double eval(double x, double y);
@@ -258,9 +258,6 @@ public class EquationParser {
         }
     }
 
-    // =========================================================================
-    // NATIVE AST COMPILER (Shunting-Yard / Recursive Descent)
-    // =========================================================================
     private static class ASTCompiler {
         private final String str;
         private final Map<Character, Parameter> params;
@@ -356,10 +353,7 @@ public class EquationParser {
                     Node a = x, b = parseFactor();
                     x = (X, Y) -> a.eval(X, Y) / b.eval(X, Y);
                 } else {
-                    // Implicit multiplication support
-                    // If the next char is a digit, letter, or '(', it's a factor
-                    // We do NOT include '+' or '-' here to avoid conflict with addition/subtraction
-                    if (ch == '(' || (ch >= '0' && ch <= '9') || ch == '.' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+                    if (ch == '(' || (ch >= '0' && ch <= '9') || ch == '.' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == 'θ') {
                         Node a = x, b = parseFactor();
                         x = (X, Y) -> a.eval(X, Y) * b.eval(X, Y);
                     } else {
@@ -385,20 +379,17 @@ public class EquationParser {
                 while ((ch >= '0' && ch <= '9') || ch == '.') nextChar();
                 double val = Double.parseDouble(str.substring(startPos, this.pos));
                 xNode = (X, Y) -> val;
-            } else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
-                while ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) nextChar();
+            } else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == 'θ') {
+                while ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == 'θ') nextChar();
                 String rawName = str.substring(startPos, this.pos).toLowerCase();
 
-                // 1. Clean up MathLive UI artifacts (\left and \right)
                 String name = rawName.replace("left", "").replace("right", "");
 
                 if (eat('(')) {
                     Node a = parseExpression();
                     eat(')');
-                    // 2. Direct function match (e.g., sin(...))
                     xNode = buildFunctionNode(name, a);
                 } else {
-                    // 3. Handle implicit strings like "sinx", "xsiny", "pi", or standalone "sin"
                     xNode = parseImplicitLetters(name);
                 }
             } else {
@@ -412,8 +403,6 @@ public class EquationParser {
 
             return xNode;
         }
-
-// --- HELPER METHODS ---
 
         private Node buildFunctionNode(String name, Node a) {
             return switch (name) {
@@ -459,14 +448,12 @@ public class EquationParser {
             Node chain = null;
             int i = 0;
 
-            // Order matters: check longest function names first
             String[] funcs = {"arcsec", "arccsc", "arccot", "sec", "csc", "cot", "sin", "cos", "tan", "arcsin", "arccos", "arctan", "signum", "sinh", "cosh", "tanh", "sqrt", "cbrt", "floor", "round", "sign", "ceil", "abs", "log", "exp", "ln"};
 
             while (i < name.length()) {
                 Node part = null;
                 boolean foundFunc = false;
 
-                // Check if a mathematical function is embedded in the string
                 for (String func : funcs) {
                     if (name.startsWith(func, i)) {
                         foundFunc = true;
@@ -474,50 +461,17 @@ public class EquationParser {
                         Node argNode;
 
                         if (nextIdx < name.length()) {
-                            // Case 1: The argument is attached directly (e.g., "x" in "sinx")
                             argNode = parseImplicitLetters(name.substring(nextIdx));
-                            i = name.length();
                         } else {
-                            // Case 2: Function is at the end of this letter block (e.g., "sin 2")
-                            // Instead of parseFactor(), we peek at the next factor in the expression
-                            // BUT we can't call parseFactor() here because we are inside parseImplicitLetters
-                            // which is called by parseFactor. This would be infinite recursion if not careful.
-                            // However, parseImplicitLetters is only called when we have a string of letters.
-                            // If "sin" is at the end of "xsin", the argument must be the NEXT factor in the stream.
-                            // So we return a special node that consumes the next factor? No, that's complex.
-
-                            // SIMPLIFICATION: If a function is at the end of a letter block, 
-                            // we assume the argument follows immediately in the stream.
-                            // We return a node that, when evaluated, is just the function wrapper,
-                            // but we need to consume the argument NOW.
-                            // But we can't consume from the stream here easily because we are processing a substring.
-
-                            // ACTUALLY: The logic in parseFactor calls parseImplicitLetters(name).
-                            // If 'name' ends with "sin", we are stuck.
-                            // We need to signal to parseFactor that we consumed "sin" but need an argument.
-
-                            // Let's assume for now that implicit functions inside a string must have their argument
-                            // inside the string too (e.g. "sinx").
-                            // If someone types "sin 2", 'name' will be "sin".
-                            // In that case nextIdx == name.length().
-
-                            // FIX: If we are at the end of the string, we can't parse more from the string.
-                            // We must return a node that expects an argument from the main stream?
-                            // Or we change how parseFactor works.
-
-                            // Let's try to handle "sin" at end of string by consuming from main stream.
-                            // But parseImplicitLetters is static-ish context relative to the stream?
-                            // No, it's an instance method of ASTCompiler. We can call parseFactor()!
                             argNode = parseFactor();
-                            i = name.length();
                         }
 
+                        i = name.length();
                         part = buildFunctionNode(func, argNode);
                         break;
                     }
                 }
 
-                // If no function was found, process constants and variables
                 if (!foundFunc) {
                     if (name.startsWith("pi", i)) {
                         part = (X, Y) -> Math.PI;
@@ -525,7 +479,7 @@ public class EquationParser {
                     } else if (name.charAt(i) == 'e') {
                         part = (X, Y) -> Math.E;
                         i++;
-                    } else if (name.charAt(i) == 'x') {
+                    } else if (name.charAt(i) == 'x' || name.charAt(i) == 'p' || name.charAt(i) == 'θ' || name.charAt(i) == 't') {
                         part = (X, Y) -> X;
                         i++;
                     } else if (name.charAt(i) == 'y') {
@@ -537,13 +491,12 @@ public class EquationParser {
                             Parameter p = params.get(c);
                             part = (X, Y) -> p.getArgumentValue();
                         } else {
-                            part = (X, Y) -> 1.0; // Fallback for unknown variables
+                            part = (X, Y) -> 1.0;
                         }
                         i++;
                     }
                 }
 
-                // Chain components together via multiplication
                 if (chain == null) {
                     chain = part;
                 } else {
@@ -553,7 +506,7 @@ public class EquationParser {
                 }
             }
 
-            return chain == null ? ((X, Y) -> 1.0) : chain;
+            return chain;
         }
     }
 }
