@@ -387,10 +387,10 @@ public class EquatorController {
                 (int) (color.getBlue() * 255));
     }
 
-    public void createPolarRangeControls(VBox container, String eqId) {
+    public void createRangeControls(VBox container, String eqId) {
         EquationData ed = graphPlotter.getEquation(eqId);
         // Safety check: Only proceed if it is actually Polar
-        if (ed == null || ed.eqType != EquationParser.EqType.Polar) return;
+        if (ed == null || (ed.eqType != EquationParser.EqType.Polar && ed.eqType != EquationParser.EqType.Parametric)) return;
 
         boolean isLight = graphPlotter != null && graphPlotter.isLightMode;
 
@@ -421,9 +421,14 @@ public class EquatorController {
                 double min = parseAngle(minField.getText());
                 double max = parseAngle(maxField.getText());
 
-                if (ed != null && ed.eqType == EquationParser.EqType.Polar) {
-                    ed.thetaMin = min;
-                    ed.thetaMax = max;
+                if (ed != null) {
+                    if (ed.eqType == EquationParser.EqType.Polar) {
+                        ed.thetaMin = min;
+                        ed.thetaMax = max;
+                    } else if (ed.eqType == EquationParser.EqType.Parametric) {
+                        ed.tMin = min;
+                        ed.tMax = max;
+                    }
 
                     graphPlotter.refreshEquationData(eqId);
                     graphPlotter.draw();
@@ -456,7 +461,8 @@ public class EquatorController {
             if (!n) applyRange.run();
         });
 
-        Label midLabel = new Label("≤ θ ≤");
+        String middle = (ed.eqType == EquationParser.EqType.Parametric) ? "≤ t ≤" : "≤ θ ≤";
+        Label midLabel = new Label(middle);
         midLabel.setStyle(isLight ? "-fx-text-fill: black;" : "-fx-text-fill: white;");
 
         rangeBox.getChildren().addAll(caption, minField, midLabel, maxField);

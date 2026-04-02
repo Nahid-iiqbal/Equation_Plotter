@@ -84,8 +84,8 @@ public class MathBridge {
                     if (data != null && data.parser != null) {
                         controller.createSlidersBridge(data.parser, sliderBox, equationId);
 
-                        if (data.eqType == EquationParser.EqType.Polar) {
-                            controller.createPolarRangeControls(sliderBox, equationId);
+                        if (data.eqType == EquationParser.EqType.Polar || data.eqType == EquationParser.EqType.Parametric) {
+                            controller.createRangeControls(sliderBox, equationId);
                         }
                     }
                 } catch (Exception ex) {

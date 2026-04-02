@@ -46,8 +46,8 @@ public class EquationParser {
             if (mathPart.contains("<") || mathPart.contains(">")) {
                 isInequality = true;
                 eqtype = EqType.Implicit;
-            } else if (mathPart.contains("t") && mathPart.contains(",")
-                    && mathPart.startsWith("(") && mathPart.endsWith(")")) {
+            }  else if (mathPart.contains("t") && mathPart.contains(",")
+                && mathPart.startsWith("(") && mathPart.endsWith(")")) {
                 eqtype = EqType.Parametric;
 
                 // Find top-level comma BEFORE removing parens
@@ -68,18 +68,20 @@ public class EquationParser {
                 this.paramX = mathPart.substring(1, splitAt).trim().replaceAll("\\bt\\b", "x");
                 this.paramY = mathPart.substring(splitAt + 1, mathPart.length() - 1).trim().replaceAll("\\bt\\b", "x");
 
-            } else if (mathPart.matches("^r(?:\\s*\\([a-zθ]+\\))?\\s*=.*")) {
+            } else if (mathPart.matches("^r\\s*=.*")) {
                 eqtype = EqType.Polar;
-                mathPart = mathPart.substring(mathPart.indexOf('=') + 1).trim();
+                mathPart = mathPart.substring(mathPart.indexOf('=') + 1).trim().replaceAll("\\bt\\b", "x");
+
+            } else if (mathPart.matches("^(y\\s*=|f\\(x\\)\\s*=).*")) {
+                mathPart = mathPart.replaceAll("^(y\\s*=|f\\(x\\)\\s*=)", "").trim();
+                eqtype = EqType.Explicit;
             } else if (mathPart.contains("=")) {
                 String[] parts = mathPart.split("=");
                 if (parts.length == 2) {
-                    // Rearranges everything to one side: (left) - (right) = 0
                     mathPart = "(" + parts[0] + ") - (" + parts[1] + ")";
                 }
                 eqtype = EqType.Implicit;
             } else {
-                mathPart = mathPart.replaceAll("^(y\\s*=|f\\(x\\)\\s*=)", "").trim();
                 eqtype = EqType.Explicit;
             }
 
@@ -127,26 +129,6 @@ public class EquationParser {
 //                this.isImplicit = false;
             }
         }
-    }
-
-    private static boolean containsParametricVar(String expr) {
-        // [pt] matches either p or t as standalone letters
-        return expr.matches(".*(?<![a-z])[pt](?![a-z]).*") || expr.contains("θ");
-    }
-
-    private static boolean hasTopLevelComma(String expr) {
-        int depth = 0;
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (c == ',' && depth == 1) return true;
-        }
-        return false;
-    }
-
-    public EquationParser cloneForThread() {
-        return this;
     }
 
     public Points getPoints() {

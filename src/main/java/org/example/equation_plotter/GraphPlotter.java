@@ -1,5 +1,5 @@
 package org.example.equation_plotter;
-// ignore this commit
+
 import javafx.animation.PauseTransition;
 import javafx.geometry.Point2D;
 import javafx.scene.canvas.Canvas;
@@ -483,6 +483,114 @@ public class GraphPlotter extends StackPane {
         gc.fillText("0", yAxisPixel - 10, xAxisPixel + 15);
     }
 
+    // moved this func below drawCartesianGrid
+    // ── Polar grid — dots for minor rings, soft strokes for major ─────────────
+    public void drawPolarGrid(GraphicsContext gc, double w, double h) {
+        double cx = (0 - graphCenterX) * scale + w / 2.0;
+        double cy = h / 2.0 - (0 - graphCenterY) * scale;
+
+        gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 12));
+
+        double maxRadiusPx = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
+        double targetPixels = 100.0;
+        double rawStepUnits = targetPixels / Math.max(1e-12, scale);
+        double magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1e-12, rawStepUnits))));
+        double fraction = rawStepUnits / magnitude;
+        double majorStepUnits = (fraction < 2.0) ? magnitude
+                : (fraction < 5.0) ? 2 * magnitude
+                : 5 * magnitude;
+        double minorStepUnits = majorStepUnits / 5.0;
+        double majorStepPx = majorStepUnits * scale;
+        double minorStepPx = minorStepUnits * scale;
+
+        // Minor rings: dots
+        if (minorStepPx >= 8) {
+            gc.setFill(ThemeColor.GRID_MINOR.getColor(isLightMode));
+            int dotsPerRing = 360;
+            for (double r = minorStepPx; r <= maxRadiusPx + 1e-6; r += minorStepPx) {
+                boolean isMajor = Math.abs((r / majorStepPx) - Math.round(r / majorStepPx)) < 0.01;
+                if (isMajor) continue;
+                for (int i = 0; i < dotsPerRing; i++) {
+                    double ang = Math.toRadians(i);
+                    double dx = cx + Math.cos(ang) * r;
+                    double dy = cy - Math.sin(ang) * r;
+                    if (dx > 0 && dx < w && dy > 0 && dy < h)
+                        gc.fillOval(dx - 1, dy - 1, 2.2, 2.2);
+                }
+            }
+        }
+
+        // Major rings
+        gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
+        gc.setLineWidth(0.5);
+        for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx)
+            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+
+        // Spokes
+        gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
+        gc.setLineWidth(0.5);
+        int degreesStep = 15;
+        for (int deg = 0; deg < 360; deg += degreesStep) {
+            double ang = Math.toRadians(deg);
+            gc.strokeLine(cx, cy, cx + Math.cos(ang) * maxRadiusPx,
+                    cy - Math.sin(ang) * maxRadiusPx);
+        }
+
+        // Axis labels
+        gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+        double left = graphCenterX - w / 2 / scale;
+        double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
+        double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
+
+        for (double x = Math.floor(left / majorStepUnits) * majorStepUnits;
+             (x - left) * scale < w + scale; x += majorStepUnits) {
+            double px = (x - graphCenterX) * scale + w / 2;
+            if (Math.abs(x) > 1e-9) {
+                gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
+                double labelY = Math.clamp(xAxisPixel + 15, 0, Math.max(0, h - 20));
+                gc.fillText(formatNumber(x), px, labelY);
+            }
+        }
+        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStepUnits) * majorStepUnits;
+             (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStepUnits) {
+            double py = h / 2 - (y - graphCenterY) * scale;
+            if (Math.abs(y) > 1e-9) {
+                gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
+                double labelX = Math.clamp(yAxisPixel - 15, 5, Math.max(5, w - 45));
+                gc.fillText(formatNumber(y), labelX, py);
+            }
+        }
+
+        // Main axes
+        gc.setFill(ThemeColor.AXIS_MAIN.getColor(isLightMode));
+        gc.setLineWidth(1.5);
+        gc.strokeLine(cx - maxRadiusPx, cy, cx + maxRadiusPx, cy);
+        gc.strokeLine(cx, cy - maxRadiusPx, cx, cy + maxRadiusPx);
+
+        // Degree labels around outer rim
+        gc.setFill(ThemeColor.TEXT_SECONDARY.getColor(isLightMode));
+        double padding = 14.0;
+        double labelRadius;
+        if ((cx > w / 3 && cx < w * 2 / 3) && (Math.abs(cy) > h / 3 && Math.abs(cy) < h * 2 / 3))
+            labelRadius = Math.min(cx, Math.min(w - cx, Math.min(Math.abs(cy), h - Math.abs(cy))));
+        else if (cx > w / 3 && cx < w * 2 / 3)
+            labelRadius = Math.min(cx, w - cx);
+        else
+            labelRadius = Math.max(Math.abs(cy), h - Math.abs(cy));
+        labelRadius = Math.floor(labelRadius / majorStepPx) * majorStepPx - padding;
+
+        for (int deg = 0; deg < 360; deg += 2 * degreesStep) {
+            double ang = Math.toRadians(deg);
+            double lx = cx + Math.cos(ang) * labelRadius;
+            double ly = cy - Math.sin(ang) * labelRadius;
+            if (deg == 90) gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
+            else if (deg == 270) gc.setTextAlign(javafx.scene.text.TextAlignment.RIGHT);
+            else gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+            if (lx > 5 && lx < w - 5 && ly > 5 && ly < h - 5)
+                gc.fillText(deg + "°", lx, ly);
+        }
+    }
+
     private void drawFunction(GraphicsContext gc, double w, double h) {
         for (Map.Entry<String, EquationData> entry : currentEquations.entrySet()) {
             String id = entry.getKey();
@@ -773,54 +881,7 @@ public class GraphPlotter extends StackPane {
         }
     }
 
-    public void removeEquation(String id) {
-        currentEquations.remove(id);
-        refreshAllData();
-        implicitCache.remove(id);
-        pointsMap.remove(id);
-        isDirty = true;
-        draw();
-    }
-
-    public void zoomIn() {
-        scale = Math.min(scale * 1.1, MAX_SCALE);
-        isDirty = true;
-        draw();
-    }
-
-    public void zoomOut() {
-        scale = Math.max(scale / 1.1, MIN_SCALE);
-        isDirty = true;
-        draw();
-    }
-
-    public void reset() {
-        graphCenterX = 0;
-        graphCenterY = 0;
-        scale = 50;
-        isDirty = true;
-        refreshAllData();
-        draw();
-    }
-
-    public void updateEqColor(String id, Color color) {
-        EquationData data = currentEquations.get(id);
-        if (data != null) {
-            data.setColor(color);
-            isDirty = true;
-            draw();
-        }
-    }
-
-    public void clearAllEquations() {
-        cancelAllTasks();
-        currentEquations.clear();
-        pointsMap.clear();
-        implicitCache.clear();
-        isDirty = true;
-        draw();
-    }
-
+    // Changed the location of 4 types of "drawFunction_*" funcs.
     public void drawFunction_Explicit(GraphicsContext gc, double w, double h, EquationData data) {
         gc.beginPath();
         gc.setStroke(data.color);
@@ -857,39 +918,6 @@ public class GraphPlotter extends StackPane {
             prevPixelY = pixelY;
         }
         gc.stroke();
-    }
-
-    public void onParameterChanged(String id) {
-        EquationData eq = currentEquations.get(id);
-        if (eq == null) return;
-
-        if (eq.parser.eqtype == EquationParser.EqType.Implicit || eq.parser.isInequality) {
-            // Cancel any in-flight task for this id — it was computing with the old value
-            if (activeTasks.containsKey(id)) {
-                activeTasks.get(id).cancel(true);
-                activeTasks.remove(id);
-            }
-            // Remove stale cache — next drawGraphLayer() will recompute
-            implicitCache.remove(id);
-        } else if (eq.parser.eqtype == EquationParser.EqType.Explicit) {
-            double graphMinX = graphCenterX - (getWidth() / 2) / scale;
-            double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
-            eq.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
-        } else if (eq.eqType == EquationParser.EqType.Polar) {
-            eq.buildCachePolar(eq.thetaMin, eq.thetaMax, getWidth());
-        } else if (eq.eqType == EquationParser.EqType.Parametric) {
-            eq.buildCacheParametric(eq.tMin, eq.tMax, getWidth());
-        }
-
-        drawGraphLayer();
-    }
-
-    public EquationData getEquation(String id) {
-        return currentEquations.get(id);
-    }
-
-    public Canvas getGraphCanvas() {
-        return graphCanvas;
     }
 
     private void drawFunction_Polar(GraphicsContext gc, double w, double h, EquationData data) {
@@ -992,6 +1020,87 @@ public class GraphPlotter extends StackPane {
         gc.stroke();
     }
 
+    public void removeEquation(String id) {
+        currentEquations.remove(id);
+        refreshAllData();
+        implicitCache.remove(id);
+        pointsMap.remove(id);
+        isDirty = true;
+        draw();
+    }
+
+    public void zoomIn() {
+        scale = Math.min(scale * 1.1, MAX_SCALE);
+        isDirty = true;
+        draw();
+    }
+
+    public void zoomOut() {
+        scale = Math.max(scale / 1.1, MIN_SCALE);
+        isDirty = true;
+        draw();
+    }
+
+    public void reset() {
+        graphCenterX = 0;
+        graphCenterY = 0;
+        scale = 50;
+        isDirty = true;
+        refreshAllData();
+        draw();
+    }
+
+    public void updateEqColor(String id, Color color) {
+        EquationData data = currentEquations.get(id);
+        if (data != null) {
+            data.setColor(color);
+            isDirty = true;
+            draw();
+        }
+    }
+
+    public void clearAllEquations() {
+        cancelAllTasks();
+        currentEquations.clear();
+        pointsMap.clear();
+        implicitCache.clear();
+        isDirty = true;
+        draw();
+    }
+
+    public void onParameterChanged(String id) {
+        EquationData eq = currentEquations.get(id);
+        if (eq == null) return;
+
+        if (eq.parser.eqtype == EquationParser.EqType.Implicit || eq.parser.isInequality) {
+            // Cancel any in-flight task for this id — it was computing with the old value
+            if (activeTasks.containsKey(id)) {
+                activeTasks.get(id).cancel(true);
+                activeTasks.remove(id);
+            }
+            // Remove stale cache — next drawGraphLayer() will recompute
+            implicitCache.remove(id);
+        } else if (eq.parser.eqtype == EquationParser.EqType.Explicit) {
+            double graphMinX = graphCenterX - (getWidth() / 2) / scale;
+            double graphMaxX = graphCenterX + (getWidth() / 2) / scale;
+            eq.buildCacheExplicit(graphMinX, graphMaxX, getWidth());
+        } else if (eq.eqType == EquationParser.EqType.Polar) {
+            eq.buildCachePolar(eq.thetaMin, eq.thetaMax, getWidth());
+        } else if (eq.eqType == EquationParser.EqType.Parametric) {
+            eq.buildCacheParametric(eq.tMin, eq.tMax, getWidth());
+        }
+
+        drawGraphLayer();
+    }
+
+    public EquationData getEquation(String id) {
+        return currentEquations.get(id);
+    }
+
+    public Canvas getGraphCanvas() {
+        return graphCanvas;
+    }
+
     public void toggleGrid() {
         polarGrid = !polarGrid;
         isDirty = true;
@@ -1027,7 +1136,7 @@ public class GraphPlotter extends StackPane {
         data.thetaMin = 0;
         data.thetaMax = 2 * Math.PI;
         data.tMin = 0;
-        data.tMax = 1.0;
+        data.tMax = 2 * Math.PI;
 
         // clear caches & active tasks (existing code)
         implicitCache.remove(id);
@@ -1049,113 +1158,6 @@ public class GraphPlotter extends StackPane {
         refreshAllData();
         isDirty = true;
         draw();
-    }
-
-    // ── Polar grid — dots for minor rings, soft strokes for major ─────────────
-    public void drawPolarGrid(GraphicsContext gc, double w, double h) {
-        double cx = (0 - graphCenterX) * scale + w / 2.0;
-        double cy = h / 2.0 - (0 - graphCenterY) * scale;
-
-        gc.setFont(javafx.scene.text.Font.font("JetBrains Mono", 12));
-
-        double maxRadiusPx = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
-        double targetPixels = 100.0;
-        double rawStepUnits = targetPixels / Math.max(1e-12, scale);
-        double magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1e-12, rawStepUnits))));
-        double fraction = rawStepUnits / magnitude;
-        double majorStepUnits = (fraction < 2.0) ? magnitude
-                : (fraction < 5.0) ? 2 * magnitude
-                  : 5 * magnitude;
-        double minorStepUnits = majorStepUnits / 5.0;
-        double majorStepPx = majorStepUnits * scale;
-        double minorStepPx = minorStepUnits * scale;
-
-        // Minor rings: dots
-        if (minorStepPx >= 8) {
-            gc.setFill(ThemeColor.GRID_MINOR.getColor(isLightMode));
-            int dotsPerRing = 360;
-            for (double r = minorStepPx; r <= maxRadiusPx + 1e-6; r += minorStepPx) {
-                boolean isMajor = Math.abs((r / majorStepPx) - Math.round(r / majorStepPx)) < 0.01;
-                if (isMajor) continue;
-                for (int i = 0; i < dotsPerRing; i++) {
-                    double ang = Math.toRadians(i);
-                    double dx = cx + Math.cos(ang) * r;
-                    double dy = cy - Math.sin(ang) * r;
-                    if (dx > 0 && dx < w && dy > 0 && dy < h)
-                        gc.fillOval(dx - 1, dy - 1, 2.2, 2.2);
-                }
-            }
-        }
-
-        // Major rings
-        gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
-        gc.setLineWidth(0.5);
-        for (double r = majorStepPx; r <= maxRadiusPx + 1e-6; r += majorStepPx)
-            gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
-
-        // Spokes
-        gc.setFill(ThemeColor.GRID_MAJOR.getColor(isLightMode));
-        gc.setLineWidth(0.5);
-        int degreesStep = 15;
-        for (int deg = 0; deg < 360; deg += degreesStep) {
-            double ang = Math.toRadians(deg);
-            gc.strokeLine(cx, cy, cx + Math.cos(ang) * maxRadiusPx,
-                    cy - Math.sin(ang) * maxRadiusPx);
-        }
-
-        // Axis labels
-        gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-        double left = graphCenterX - w / 2 / scale;
-        double yAxisPixel = (0 - graphCenterX) * scale + w / 2;
-        double xAxisPixel = h / 2 - (0 - graphCenterY) * scale;
-
-        for (double x = Math.floor(left / majorStepUnits) * majorStepUnits;
-             (x - left) * scale < w + scale; x += majorStepUnits) {
-            double px = (x - graphCenterX) * scale + w / 2;
-            if (Math.abs(x) > 1e-9) {
-                gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
-                double labelY = Math.clamp(xAxisPixel + 15, 0, Math.max(0, h - 20));
-                gc.fillText(formatNumber(x), px, labelY);
-            }
-        }
-        for (double y = Math.floor((graphCenterY - h / 2 / scale) / majorStepUnits) * majorStepUnits;
-             (y - (graphCenterY - h / 2 / scale)) * scale < h + scale; y += majorStepUnits) {
-            double py = h / 2 - (y - graphCenterY) * scale;
-            if (Math.abs(y) > 1e-9) {
-                gc.setFill(ThemeColor.TEXT_PRIMARY.getColor(isLightMode));
-                double labelX = Math.clamp(yAxisPixel - 15, 5, Math.max(5, w - 45));
-                gc.fillText(formatNumber(y), labelX, py);
-            }
-        }
-
-        // Main axes
-        gc.setFill(ThemeColor.AXIS_MAIN.getColor(isLightMode));
-        gc.setLineWidth(1.5);
-        gc.strokeLine(cx - maxRadiusPx, cy, cx + maxRadiusPx, cy);
-        gc.strokeLine(cx, cy - maxRadiusPx, cx, cy + maxRadiusPx);
-
-        // Degree labels around outer rim
-        gc.setFill(ThemeColor.TEXT_SECONDARY.getColor(isLightMode));
-        double padding = 14.0;
-        double labelRadius;
-        if ((cx > w / 3 && cx < w * 2 / 3) && (Math.abs(cy) > h / 3 && Math.abs(cy) < h * 2 / 3))
-            labelRadius = Math.min(cx, Math.min(w - cx, Math.min(Math.abs(cy), h - Math.abs(cy))));
-        else if (cx > w / 3 && cx < w * 2 / 3)
-            labelRadius = Math.min(cx, w - cx);
-        else
-            labelRadius = Math.max(Math.abs(cy), h - Math.abs(cy));
-        labelRadius = Math.floor(labelRadius / majorStepPx) * majorStepPx - padding;
-
-        for (int deg = 0; deg < 360; deg += 2 * degreesStep) {
-            double ang = Math.toRadians(deg);
-            double lx = cx + Math.cos(ang) * labelRadius;
-            double ly = cy - Math.sin(ang) * labelRadius;
-            if (deg == 90) gc.setTextAlign(javafx.scene.text.TextAlignment.LEFT);
-            else if (deg == 270) gc.setTextAlign(javafx.scene.text.TextAlignment.RIGHT);
-            else gc.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
-            if (lx > 5 && lx < w - 5 && ly > 5 && ly < h - 5)
-                gc.fillText(deg + "°", lx, ly);
-        }
     }
 
     public void toggleTheme() {
