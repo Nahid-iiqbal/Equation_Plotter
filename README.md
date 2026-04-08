@@ -72,7 +72,12 @@ The application is structured into tightly coupled, high-performance modules:
 * Maven or Gradle
 * JavaFX SDK (if not managed via build tools)
 
-### Running the Application
+### Installing the Application
+1. Go to target -> installer and click on the setup application.
+2. Follow instructions and finish installation.
+3. Run the application.
+
+### Running the Application from source code
 1. Clone the repository.
 2. Ensure dependencies for `javafx-web`, `javafx-swing`, `ikonli`, and `symja` are in your `pom.xml` or `build.gradle`.
 3. The main entry point is `org.example.equation_plotter.Launcher`, which pre-initializes Symja symbols on the main thread before starting the JavaFX application lifecycle.
